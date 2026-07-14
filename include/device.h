@@ -12,6 +12,12 @@ typedef enum {
     FRIDGE
 } DeviceType;
 
+typedef enum { 
+    OFF, 
+    ON, 
+    PARTIAL 
+} DeviceOnState;
+
 typedef struct{
     int id;
     pid_t pid;
@@ -24,12 +30,6 @@ typedef struct {
     char label[32];
     int pos;
 } Switch;
-
-typedef enum { 
-    OFF, 
-    ON, 
-    PARTIAL 
-} DeviceOnState;
 
 typedef struct {
     Switch switches[MAX_SWITCHES];

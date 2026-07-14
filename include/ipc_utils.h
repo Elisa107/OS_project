@@ -1,9 +1,27 @@
-int create_server(...);
+#ifndef IPC_UTILS_H
+#define IPC_UTILS_H
 
-int connect_device(...);
+#include "protocol.h"
 
-int send_message(...);
+// Create a socket server which is associated with a path
+int create_server(int device_id, char *path);
 
-int receive_message(...);
+// Wait for a client to connect to the server socket
+int accept_connection(int server_fd);
 
-void close_connection(...);
+// It connects to a server socket at the specified path
+int connect_device(char *path);
+
+// Sends a message to the specified file descriptor
+int send_message(int fd, Message *msg);
+
+// Receives a message
+int receive_message(int fd, Message *msg);
+
+// Close a connection
+void close_connection(int fd);
+
+// Remove the socket file
+void remove_socket(const char *path);
+
+#endif
