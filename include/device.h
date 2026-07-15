@@ -1,3 +1,5 @@
+#ifndef DEVICE_H
+#define DEVICE_H
 #include <sys/types.h>
 
 #define MAX_DEVICES 100
@@ -36,3 +38,6 @@ typedef struct {
     int switch_count;
     DeviceOnState state;   
 } DeviceState;
+
+int is_control_device(DeviceType type);
+#endif

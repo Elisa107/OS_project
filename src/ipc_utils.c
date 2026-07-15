@@ -8,7 +8,7 @@
 #include "../include/common.h"
 
 int create_server(int device_id, char *path) {
-    snprintf(path, SOCKET_PATH_LEN, "/tmp/domotica_%d.sock", device_id);
+    snprintf(path, SOCKET_PATH_LEN, "/tmp/domotic_%d.sock", device_id);
     remove_socket(path);  // remove the file if it already exists, to avoid bind errors
 
     int srv = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -17,7 +17,7 @@ int create_server(int device_id, char *path) {
         return -1; 
     }
 
-    struct sockaddr_un addr; // not contains IP+port but only a file's path
+    struct sockaddr_un addr; // not contains IP+port but only a file's path (we're working locally)
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, path);
@@ -34,7 +34,7 @@ int create_server(int device_id, char *path) {
         return -1;
     }
 
-    printf("Device %d in ascolto su %s\n", device_id, path);
+    printf("Device %d is listening on %s\n", device_id, path);
     return srv;
 }
 

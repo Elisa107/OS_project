@@ -1,3 +1,5 @@
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
 typedef enum{
     CMD_INFO,
     CMD_SWITCH,
@@ -13,3 +15,5 @@ typedef struct{
     int receiver;
     char payload[256];
 } Message;
+
+#endif
