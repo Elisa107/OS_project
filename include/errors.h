@@ -12,5 +12,8 @@
 #define INVALID_ARGUMENT -7
 #define TOO_MANY_SWITCHES -8
 #define NO_DEVICES -9
+#define NO_CHILDREN -10
+
+const char* error_to_string(int error_code);
 
 #endif

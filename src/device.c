@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "device.h"
 
 int is_control_device(DeviceType type) {
@@ -13,4 +15,13 @@ const char* type_to_string(DeviceType type) {
         case FRIDGE: return "FRIDGE";
         default: return "UNKNOWN";
     }
+}
+
+DeviceType parse_type(char *name) {
+    if (strcmp(name, "hub") == 0) return HUB;
+    if (strcmp(name, "timer") == 0) return TIMER;
+    if (strcmp(name, "bulb") == 0) return BULB;
+    if (strcmp(name, "window") == 0) return WINDOW;
+    if (strcmp(name, "fridge") == 0) return FRIDGE;
+    return -1;
 }

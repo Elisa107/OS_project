@@ -4,12 +4,13 @@
 #include <../include/errors.h>
 #include <../include/protocol.h>
 #include <../include/ipc_utils.h>
+#include <../include/controller.h>
 
 
 int main(int argc, char *argv[]) {
     
     printf("Starting the device...\n");
-    run_controller(); // in controller.c
+    controller_shell(); // in controller.c
 
     return 0;
 }
