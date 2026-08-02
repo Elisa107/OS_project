@@ -1,0 +1,9 @@
+# eseguibili generati dalla compilazione
+controller
+manual_interaction
+
+# file oggetto
+*.o
+
+# socket residui (di solito stanno in /tmp, ma per sicurezza)
+*.sock
