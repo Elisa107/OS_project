@@ -13,6 +13,10 @@
 #include "../include/device.h"
 #include "../include/controller.h"
 
+/* AGGIUNTA (Evelin): include per bulb_run()/window_run(), usati in add_device() */
+#include "../include/bulb.h"
+#include "../include/window.h"
+
 typedef enum {
     SHELL_LIST,
     SHELL_ADD,
@@ -150,16 +154,23 @@ int add_device(DeviceType type, int parent_id) {
             exit(1);
         }
 
-        // per ora, solo un placeholder: accetta una connessione e chiude
-        // (qui dopo ci metterete la vera logica del device)
         printf("Device %d started, listening on %s\n", new_id, path);
 
+        /* AGGIUNTA (Evelin): dispatch di Bulb/Window verso bulb_run()/window_run(),
+         * che non ritornano mai (restano in ascolto finché non ricevono SIGTERM) */
+        if (type == BULB) {
+            bulb_run(srv_fd, new_id);
+        } else if (type == WINDOW) {
+            window_run(srv_fd, new_id);
+        }
+
+        /* MODIFICA (Evelin): commento originale spostato qui sotto (prima era
+         * subito dopo "child (this process...)") e riformulato da "per ora,
+         * solo un placeholder: accetta una connessione e chiude" a quanto
+         * segue, perché ora vale solo per i tipi non ancora collegati sopra. */
+        // placeholder originale per i tipi non ancora collegati
+        // (qui dopo ci metterete la vera logica del device)
         exit(0);  // il figlio termina quando la sua logica finisce (per ora subito)
-        /*Quando il figlio termina (subito, per ora), diventa uno "zombie" finché il 
-        padre non fa wait()/waitpid() su di lui. Per ora, con un placeholder che esce 
-        subito, non è un problema bloccante — ma quando il device farà qualcosa di persistente 
-        (restare in ascolto sul socket in un loop), il figlio non uscirà più subito, e non dovrai
-        preoccuparti di questo nell'immediato.*/
     }
 
     // Controller
@@ -307,5 +318,4 @@ int delete_device(int device_id) {
     devices[device_id].active = 0;
     return SUCCESS;
 }
-
 
