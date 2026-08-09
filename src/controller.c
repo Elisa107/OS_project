@@ -16,6 +16,9 @@
 /* AGGIUNTA (Evelin): include per bulb_run()/window_run(), usati in add_device() */
 #include "../include/bulb.h"
 #include "../include/window.h"
+#include "../include/hub.h"
+#include "../include/timer.h"
+#include "../include/fridge.h"
 
 typedef enum {
     SHELL_LIST,
@@ -128,8 +131,16 @@ int controller_shell(){
                 }
                 break;
             }
-            case SHELL_EXIT:
+            case SHELL_EXIT: {
+                int i;
+                for (i = 0; i < device_count; i++) {
+                    if (devices[i].active) {
+                        kill(devices[i].pid, SIGTERM);
+                        waitpid(devices[i].pid, NULL, 0);
+                    }
+                }
                 return SUCCESS;
+            }
             default:
                 printf("Command not recognized\n");
         }       
@@ -162,6 +173,12 @@ int add_device(DeviceType type, int parent_id) {
             bulb_run(srv_fd, new_id);
         } else if (type == WINDOW) {
             window_run(srv_fd, new_id);
+        } else if (type == HUB) {
+            hub_run(srv_fd, new_id);
+        } else if (type == TIMER) {
+            timer_run(srv_fd, new_id);
+        } else if (type == FRIDGE) {
+            fridge_run(srv_fd, new_id);
         }
 
         /* MODIFICA (Evelin): commento originale spostato qui sotto (prima era
@@ -223,17 +240,30 @@ int info(int device_id, char *output){
     return DEVICE_NOT_FOUND;
 }
 
-int list_devices(){
-    if(device_count == 0) {
+int list_devices() {
+    if (device_count == 0) {
         return NO_DEVICES;
     }
-    for(int i = 0; i < device_count; i++) {
-        if(devices[i].active) {
-            printf("Device ID: %d, Type: %s, Role: %s\n", 
-            devices[i].id, 
-            type_to_string(devices[i].type), 
-            is_control_device(devices[i].type) ? "Control" : "Interaction");
+    for (int i = 0; i < device_count; i++) {
+        if (!devices[i].active) continue;
+
+        char state_info[64] = "N/A";
+        int fd = connect_device(devices[i].socket_path);
+        if (fd != -1) {
+            Message req, resp;
+            req.command = CMD_INFO;
+            req.sender = 0;
+            req.receiver = devices[i].id;
+            send_message(fd, &req);
+            receive_message(fd, &resp);
+            snprintf(state_info, sizeof(state_info), "%s", resp.payload);
+            close_connection(fd);
         }
+
+        printf("ID: %d, Type: %s, Role: %s, State: %s\n",
+               devices[i].id, type_to_string(devices[i].type),
+               is_control_device(devices[i].type) ? "Control" : "Interaction",
+               state_info);
     }
     return SUCCESS;
 }
@@ -248,9 +278,6 @@ int switch_device(int device_id, char* label, int switch_pos){
     }
     if (index == -1) {
         return DEVICE_NOT_FOUND;
-    }
-    if (is_control_device(devices[index].type)) {
-        return DEVICE_TYPE_MISMATCH;
     }
     int fd = connect_device(devices[index].socket_path);
     if (fd == -1) {
@@ -307,15 +334,55 @@ int link_devices(int device_id, int parent_id){
     }
 
     devices[device_id].parent_id = parent_id;
+
+    // avvisa il device genitore (se è un HUB o TIMER) del nuovo figlio
+    int fd = connect_device(devices[parent_id].socket_path);
+    if (fd != -1) {
+        Message msg;
+        msg.command = CMD_LINK;
+        msg.sender = 0;
+        msg.receiver = parent_id;
+        snprintf(msg.payload, sizeof(msg.payload), "child:%d", device_id);
+        send_message(fd, &msg);
+
+        Message resp;
+        receive_message(fd, &resp);
+        close_connection(fd);
+    }
+
+    int fd_child = connect_device(devices[device_id].socket_path);
+    if (fd_child != -1) {
+        Message msg_child;
+        msg_child.command = CMD_LINK;
+        msg_child.sender = 0;
+        msg_child.receiver = device_id;
+        snprintf(msg_child.payload, sizeof(msg_child.payload), "%d", parent_id);
+        send_message(fd_child, &msg_child);
+
+        Message resp_child;
+        receive_message(fd_child, &resp_child);
+        close_connection(fd_child);
+    }
+
     return SUCCESS;
 }
 
 int delete_device(int device_id) {
+    int i;
     if (device_id < 0 || device_id >= next_id || !devices[device_id].active) {
         return DEVICE_NOT_FOUND;
     }
+    // prima cancella ricorsivamente tutti i figli logici (se ce ne sono)
+    for (i = 0; i < device_count; i++) {
+        if (devices[i].active && devices[i].parent_id == device_id) {
+            delete_device(devices[i].id);   // ricorsione: cancella anche i "nipoti"
+        }
+    }
+    // poi termina il device stesso
     kill(devices[device_id].pid, SIGTERM);
     devices[device_id].active = 0;
+    devices[device_id].parent_id = -1;
+
     return SUCCESS;
 }
 

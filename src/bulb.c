@@ -1,5 +1,3 @@
-*bulb.c 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,7 +42,7 @@ static int parse_bit(const char *s, int *out) {
 }
 
 
- * Payload di CMD_SWITCH nel formato "label:pos", es: power:1 / power:0 
+//Payload di CMD_SWITCH nel formato "label:pos", es: power:1 / power:0 
 static void handle_message(Bulb *b, const Message *in, Message *out) {
     memset(out, 0, sizeof *out);
     out->sender   = in->receiver;

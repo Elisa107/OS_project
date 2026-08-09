@@ -31,7 +31,7 @@ static void req(int id, int sender, Command cmd, const char *payload, Message *o
     close_connection(fd);
 }
 
- * SCENARIO 1 — comportamento base di Bulb e Window
+// SCENARIO 1 — comportamento base di Bulb e Window
 
 static void scenario_base(void) {
     Message r;
@@ -85,7 +85,7 @@ static void scenario_base(void) {
 }
 
 
- * SCENARIO 2 — edge case 2.2.8: override manuale simultaneo a un
+//SCENARIO 2 — edge case 2.2.8: override manuale simultaneo a un
 
 static void scenario_concurrent_override(void) {
     printf("\n=========== SCENARIO 2: override manuale simultaneo (edge case 2.2.8) ===========\n");
