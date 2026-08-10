@@ -7,7 +7,7 @@ CFLAGS = -Iinclude
 # sottostante (il resto della riga era già presente).
 CONTROLLER_SRC = src/main.c src/controller.c src/device.c src/ipc_utils.c \
                  src/errors.c src/fridge.c src/hub.c src/timer.c \
-                 src/bulb.c src/window.c
+                 src/bulb.c src/window.c src/signal_utils.c
 
 # manual_interaction e' un eseguibile a parte (ha un suo main).
 MANUAL_SRC = src/manual_interaction.c src/ipc_utils.c

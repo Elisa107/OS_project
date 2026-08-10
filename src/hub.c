@@ -6,6 +6,7 @@
 #include "protocol.h"
 #include "ipc_utils.h"
 #include "common.h"
+#include "signal_utils.h"
 
 #define MAX_CHILDREN 32
 
@@ -164,10 +165,14 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
 
 /* Server del device: una connessione per comando. */
 void hub_run(int srv_fd, int id) {
+    char path[SOCKET_PATH_LEN];
+    snprintf(path, sizeof(path), "/tmp/domotic_%d.sock", id);
+    register_cleanup_handler(path);
+
     Hub h;
     hub_init(&h);
     srand((unsigned)getpid());
-    fprintf(stderr, "[hub %d] avviato (pid=%d)\n", id, getpid());
+    fprintf(stderr, "[hub %d] avviato (pid=%d)\n\n", id, getpid());
 
     while (1) {
         int client = accept_connection(srv_fd);
@@ -175,7 +180,7 @@ void hub_run(int srv_fd, int id) {
 
         Message in;
         if (receive_message(client, &in) == 0) {
-            sleep(1 + rand() % 3);     /* ritardo di elaborazione simulato (1-3 s) */
+            sleep(1 + rand() % 3);
             Message out;
             handle_message(&h, &in, &out);
             send_message(client, &out);

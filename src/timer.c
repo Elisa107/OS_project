@@ -9,6 +9,7 @@
 #include "protocol.h"
 #include "ipc_utils.h"
 #include "common.h"
+#include "signal_utils.h"
 
 typedef struct {
     int  child_id;      /* device controllato (-1 se nessuno) */
@@ -223,10 +224,14 @@ static void handle_message(Timer *t, const Message *in, Message *out) {
  * impostata, con un limite pari al tempo che manca alla prossima azione (accensione
  * a begin, spegnimento a end): allo scadere il Timer aziona il figlio. */
 void timer_run(int srv_fd, int id) {
+    char path[SOCKET_PATH_LEN];
+    snprintf(path, sizeof(path), "/tmp/domotic_%d.sock", id);
+    register_cleanup_handler(path);
+
     Timer t;
     timer_init(&t);
     srand((unsigned)getpid());
-    fprintf(stderr, "[timer %d] avviato (pid=%d)\n", id, getpid());
+    fprintf(stderr, "[timer %d] avviato (pid=%d)\n\n", id, getpid());
 
     while (1) {
         time_t now = time(NULL);
@@ -249,7 +254,7 @@ void timer_run(int srv_fd, int id) {
             perror("select");
             continue;
         }
-        if (ready == 0) {                 /* scaduto il tempo -> azione oraria */
+        if (ready == 0) {
             timer_actuate(&t, action == 1);
             fprintf(stderr, "[timer %d] %s del figlio\n", id, action == 1 ? "accensione" : "spegnimento");
             continue;

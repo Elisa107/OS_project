@@ -47,7 +47,6 @@ Device devices[MAX_DEVICES];
 int device_count = 0;
 
 int controller_init(){
-    
 
 }
 
@@ -57,6 +56,7 @@ int controller_shell(){
 
     while (1) {
         printf("> ");
+        fflush(stdout);
         if (fgets(line, sizeof(line), stdin) == NULL) {
             break;
         }
@@ -143,7 +143,7 @@ int controller_shell(){
             }
             default:
                 printf("Command not recognized\n");
-        }       
+        }    
     }
     return SUCCESS;
 }

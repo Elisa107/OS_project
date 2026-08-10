@@ -6,6 +6,8 @@
 
 #include "protocol.h"
 #include "ipc_utils.h"
+#include "common.h"
+#include "signal_utils.h"
 
 typedef enum { OFF = 0, ON = 1 } BulbState;
 
@@ -111,10 +113,14 @@ static void handle_message(Bulb *b, const Message *in, Message *out) {
 }
 
 void bulb_run(int srv_fd, int id) {
+    char path[SOCKET_PATH_LEN];
+    snprintf(path, sizeof(path), "/tmp/domotic_%d.sock", id);
+    register_cleanup_handler(path);
+
     Bulb b;
     bulb_init(&b);
     srand((unsigned)getpid());
-    fprintf(stderr, "[bulb %d] avviato (pid=%d)\n", id, getpid());
+    fprintf(stderr, "[bulb %d] avviato (pid=%d)\n\n", id, getpid());
 
     while (1) {
         int client = accept_connection(srv_fd);
@@ -122,7 +128,7 @@ void bulb_run(int srv_fd, int id) {
 
         Message in;
         if (receive_message(client, &in) == 0) {
-            sleep(1 + rand() % 3);            /* ritardo simulato 1-3s (2.2.6) */
+            sleep(1 + rand() % 3);
             Message out;
             handle_message(&b, &in, &out);
             send_message(client, &out);

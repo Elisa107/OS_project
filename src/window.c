@@ -6,6 +6,8 @@
 
 #include "protocol.h"
 #include "ipc_utils.h"
+#include "common.h"
+#include "signal_utils.h"
 
 typedef enum { CLOSED = 0, OPEN = 1 } WindowState;
 
@@ -109,10 +111,14 @@ static void handle_message(Window *w, const Message *in, Message *out) {
 }
 
 void window_run(int srv_fd, int id) {
+    char path[SOCKET_PATH_LEN];
+    snprintf(path, sizeof(path), "/tmp/domotic_%d.sock", id);
+    register_cleanup_handler(path);
+
     Window w;
     window_init(&w);
     srand((unsigned)getpid());
-    fprintf(stderr, "[window %d] avviato (pid=%d)\n", id, getpid());
+    fprintf(stderr, "[window %d] avviato (pid=%d)\n\n", id, getpid());
 
     while (1) {
         int client = accept_connection(srv_fd);

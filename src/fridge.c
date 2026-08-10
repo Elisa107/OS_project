@@ -10,6 +10,8 @@
 
 #include "protocol.h"
 #include "ipc_utils.h"
+#include "signal_utils.h"
+#include "common.h"
 
 typedef enum { CLOSED = 0, OPEN = 1 } FridgeState;
 
@@ -118,10 +120,14 @@ static void handle_message(Fridge *f, const Message *in, Message *out) {
  * select() aspetta un comando ma, se il frigo e' aperto, con un tempo limite:
  * se non arriva nulla entro `delay` secondi, il frigo si auto-chiude. */
 void fridge_run(int srv_fd, int id) {
+    char path[SOCKET_PATH_LEN];
+    snprintf(path, sizeof(path), "/tmp/domotic_%d.sock", id);
+    register_cleanup_handler(path);
+
     Fridge f;
     fridge_init(&f);
     srand((unsigned)getpid());
-    fprintf(stderr, "[fridge %d] avviato (pid=%d)\n", id, getpid());
+    fprintf(stderr, "[fridge %d] avviato (pid=%d)\n\n", id, getpid());
 
     while (1) {
         fd_set rset;
@@ -134,9 +140,9 @@ void fridge_run(int srv_fd, int id) {
             if (remaining < 0) remaining = 0;
             tv.tv_sec = remaining;
             tv.tv_usec = 0;
-            tvp = &tv;                 /* aperto: attende al massimo `remaining` s */
+            tvp = &tv;
         } else {
-            tvp = NULL;                /* chiuso: attende un comando senza scadenza */
+            tvp = NULL;
         }
 
         int ready = select(srv_fd + 1, &rset, NULL, NULL, tvp);
@@ -147,7 +153,7 @@ void fridge_run(int srv_fd, int id) {
             continue;
         }
 
-        if (ready == 0) {              /* scaduto il tempo -> auto-chiusura */
+        if (ready == 0) {
             f.state = CLOSED;
             f.open_since = 0;
             f.open_deadline = 0;
@@ -160,7 +166,7 @@ void fridge_run(int srv_fd, int id) {
 
         Message in;
         if (receive_message(client, &in) == 0) {
-            sleep(1 + rand() % 3);     /* ritardo di elaborazione simulato (1-3 s) */
+            sleep(1 + rand() % 3);
             Message out;
             handle_message(&f, &in, &out);
             send_message(client, &out);
