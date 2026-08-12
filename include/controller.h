@@ -2,6 +2,7 @@
 #define CONTROLLER_H
 
 #include "common.h"
+#include "device.h"
 
 int controller_init();
 int controller_shell();

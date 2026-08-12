@@ -9,6 +9,12 @@ CONTROLLER_SRC = src/main.c src/controller.c src/device.c src/ipc_utils.c \
                  src/errors.c src/fridge.c src/hub.c src/timer.c \
                  src/bulb.c src/window.c src/signal_utils.c
 
+DEVICE_SRC = src/ipc_utils.c src/errors.c src/signal_utils.c \
+             src/bulb.c src/window.c src/fridge.c src/hub.c src/timer.c
+
+DEMO_SRC = test/test_all_devices.c $(DEVICE_SRC)
+DEMO      = test_all_devices
+
 # manual_interaction e' un eseguibile a parte (ha un suo main).
 MANUAL_SRC = src/manual_interaction.c src/ipc_utils.c
 
@@ -26,9 +32,15 @@ $(CONTROLLER): $(CONTROLLER_SRC)
 $(MANUAL): $(MANUAL_SRC)
 	$(CC) $(CFLAGS) -o $(MANUAL) $(MANUAL_SRC)
 
+$(DEMO): $(DEMO_SRC)
+	$(CC) $(CFLAGS) -o $(DEMO) $(DEMO_SRC)
+
+demo: $(DEMO)
+	./$(DEMO)
+
 run: build
 	./$(CONTROLLER)
 
 clean:
-	rm -f $(CONTROLLER) $(MANUAL)
+	rm -f $(CONTROLLER) $(MANUAL) $(DEMO)
 	rm -f /tmp/domotic_*.sock

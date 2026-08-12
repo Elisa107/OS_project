@@ -1,4 +1,8 @@
 #include <sys/wait.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <errno.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -46,6 +50,50 @@ int next_id = 0; // keep track of the next device ID to assign
 Device devices[MAX_DEVICES];
 int device_count = 0;
 
+static int controller_srv_fd = -1;
+
+static int open_controller_socket(void) {
+    unlink(CONTROLLER_SOCKET_PATH); // rimuove il file residuo di un run precedente
+
+    int srv = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (srv == -1) {
+        perror("socket (controller)");
+        return -1;
+    }
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strcpy(addr.sun_path, CONTROLLER_SOCKET_PATH);
+
+    if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("bind (controller)");
+        close(srv);
+        return -1;
+    }
+
+    if (listen(srv, 10) == -1) {
+        perror("listen (controller)");
+        close(srv);
+        return -1;
+    }
+
+    return srv;
+}
+
+static void handle_incoming_notification(void) {
+    int client = accept_connection(controller_srv_fd);
+    if (client == -1) return;
+
+    Message in;
+    if (receive_message(client, &in) == 0) {
+        if (in.command == CMD_OVERRIDE) {
+            printf("\n[NOTIFICA] Device %d: override manuale -> %s\n", in.sender, in.payload);
+        }
+    }
+    close_connection(client);
+}
+
 /* Handler di SIGCHLD: quando un device figlio muore (crash o kill), il kernel
  * avvisa il Controller. Qui "raccogliamo" i processi morti con waitpid non
  * bloccante (WNOHANG) e segniamo i device corrispondenti come non piu' attivi,
@@ -86,9 +134,39 @@ int controller_shell(){
 
     controller_init();   /* installa la rilevazione crash (SIGCHLD) */
 
+    controller_srv_fd = open_controller_socket();
+    if (controller_srv_fd == -1) {
+        fprintf(stderr, "Impossibile aprire il socket del Controller: le notifiche spontanee non funzioneranno\n");
+    }
+
+    printf("> ");
+    fflush(stdout);
+
     while (1) {
-        printf("> ");
-        fflush(stdout);
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(STDIN_FILENO, &readfds);
+        int maxfd = STDIN_FILENO;
+        if (controller_srv_fd != -1) {
+            FD_SET(controller_srv_fd, &readfds);
+            if (controller_srv_fd > maxfd) maxfd = controller_srv_fd;
+        }
+
+        int ready = select(maxfd + 1, &readfds, NULL, NULL, NULL);
+        if (ready == -1) {
+            if (errno == EINTR) continue; /* interrotta da SIGCHLD, si ritenta */
+            perror("select");
+            break;
+        }
+
+        if (controller_srv_fd != -1 && FD_ISSET(controller_srv_fd, &readfds)) {
+            handle_incoming_notification();
+        }
+
+        if (!FD_ISSET(STDIN_FILENO, &readfds)) {
+            continue; /* era pronta solo la notifica: torna ad aspettare, stdin invariato */
+        }
+
         if (fgets(line, sizeof(line), stdin) == NULL) {
             break;
         }
@@ -175,7 +253,9 @@ int controller_shell(){
             }
             default:
                 printf("Command not recognized\n");
-        }    
+        }
+        printf("> ");
+        fflush(stdout);    
     }
     return SUCCESS;
 }

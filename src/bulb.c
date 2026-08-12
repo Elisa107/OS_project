@@ -112,6 +112,28 @@ static void handle_message(Bulb *b, const Message *in, Message *out) {
     }
 }
 
+static void notify_controller_override(int id, const Message *in, const Message *out) {
+    if (in->sender != -1) return;          /* non e' un override manuale */
+    if (in->command != CMD_SWITCH) return; /* notifichiamo solo i cambi di stato */
+    if (out->command != CMD_ACK) return;   /* comando fallito, niente da notificare */
+
+    char ctrl_path[SOCKET_PATH_LEN];
+    snprintf(ctrl_path, sizeof(ctrl_path), "%s", CONTROLLER_SOCKET_PATH);
+
+    int fd = connect_device(ctrl_path);
+    if (fd == -1) return;
+
+    Message notify;
+    memset(&notify, 0, sizeof notify);
+    notify.command = CMD_OVERRIDE;
+    notify.sender = id;
+    notify.receiver = 0;
+    snprintf(notify.payload, sizeof notify.payload, "%s", out->payload);
+
+    send_message(fd, &notify);
+    close_connection(fd);
+}
+
 void bulb_run(int srv_fd, int id) {
     char path[SOCKET_PATH_LEN];
     snprintf(path, sizeof(path), "/tmp/domotic_%d.sock", id);
@@ -132,6 +154,7 @@ void bulb_run(int srv_fd, int id) {
             Message out;
             handle_message(&b, &in, &out);
             send_message(client, &out);
+            notify_controller_override(id, &in, &out);
         }
         close_connection(client);
     }
