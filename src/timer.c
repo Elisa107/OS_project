@@ -74,11 +74,27 @@ static int timer_query_child(int child_id, char *state_out, size_t n) {
     return 0;
 }
 
-/* Esegue l'azione oraria: on=1 accende il figlio, on=0 lo spegne. */
+/* "Lingua" dello switch del figlio, dedotta dal suo stato (come nell'Hub). */
+typedef enum { VOCAB_UNKNOWN, VOCAB_POWER, VOCAB_OPENCLOSE } Vocab;
+
+static Vocab timer_child_vocab(int child_id) {
+    char st[64];
+    if (timer_query_child(child_id, st, sizeof st) != 0) return VOCAB_UNKNOWN;
+    if (strcmp(st, "on") == 0 || strcmp(st, "off") == 0)     return VOCAB_POWER;
+    if (strcmp(st, "open") == 0 || strcmp(st, "closed") == 0) return VOCAB_OPENCLOSE;
+    return VOCAB_UNKNOWN;
+}
+
+/* Esegue l'azione oraria: on=1 accende il figlio, on=0 lo spegne.
+ * Traduce lo switch nella lingua del figlio: window -> open:1/close:1,
+ * altrimenti usa sw_label (default "power"). */
 static void timer_actuate(Timer *t, int on) {
     if (t->child_id < 0) return;
     char p[64];
-    snprintf(p, sizeof p, "%s:%d", t->sw_label, on ? 1 : 0);
+    if (timer_child_vocab(t->child_id) == VOCAB_OPENCLOSE)
+        snprintf(p, sizeof p, on ? "open:1" : "close:1");
+    else
+        snprintf(p, sizeof p, "%s:%d", t->sw_label, on ? 1 : 0);
     if (timer_send_child(t->child_id, p) == 0) {
         char st[64];
         if (timer_query_child(t->child_id, st, sizeof st) == 0)

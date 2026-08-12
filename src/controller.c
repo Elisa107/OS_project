@@ -46,13 +46,45 @@ int next_id = 0; // keep track of the next device ID to assign
 Device devices[MAX_DEVICES];
 int device_count = 0;
 
-int controller_init(){
+/* Handler di SIGCHLD: quando un device figlio muore (crash o kill), il kernel
+ * avvisa il Controller. Qui "raccogliamo" i processi morti con waitpid non
+ * bloccante (WNOHANG) e segniamo i device corrispondenti come non piu' attivi,
+ * rimuovendone il socket rimasto in /tmp. */
+static void handle_sigchld(int sig) {
+    (void)sig;
+    pid_t pid;
+    while ((pid = waitpid(-1, NULL, WNOHANG)) > 0) {
+        for (int i = 0; i < next_id; i++) {
+            if (devices[i].pid == pid && devices[i].active) {
+                devices[i].active = 0;
+                remove_socket(devices[i].socket_path);
+                break;
+            }
+        }
+    }
+}
 
+int controller_init(){
+    /* Installa la rilevazione dei crash. SA_RESTART fa riprendere le chiamate
+     * bloccanti (la lettura dei comandi) invece di interromperle quando muore
+     * un device; SA_NOCLDSTOP evita di ricevere SIGCHLD quando un figlio si
+     * limita a sospendersi. */
+    struct sigaction sa;
+    sa.sa_handler = handle_sigchld;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+        perror("sigaction");
+        return IPC_ERROR;
+    }
+    return SUCCESS;
 }
 
 // it reads commands from stdin and executes them, until the user types "exit"
 int controller_shell(){
     char line[256];
+
+    controller_init();   /* installa la rilevazione crash (SIGCHLD) */
 
     while (1) {
         printf("> ");
@@ -111,7 +143,7 @@ int controller_shell(){
                 int id;
                 char label[32], value[64];
                 sscanf(line, "switch %d %s %s", &id, label, value);
-                int result = switch_device(id, label, value); //ho modificato queste 4 righe per far funzionare il timer. ho sostituito pos con value
+                int result = switch_device(id, label, value);
                 if (result != SUCCESS) {
                     printf("Error: %s\n", error_to_string(result));
                 } else {
@@ -247,7 +279,7 @@ int list_devices() {
     for (int i = 0; i < device_count; i++) {
         if (!devices[i].active) continue;
 
-        char state_info[256] = "N/A"; //ho modificato da 64 a 256 per eliminare il warning
+        char state_info[256] = "N/A";
         int fd = connect_device(devices[i].socket_path);
         if (fd != -1) {
             Message req, resp;
@@ -268,7 +300,7 @@ int list_devices() {
     return SUCCESS;
 }
 
-int switch_device(int device_id, char* label, char* value){ //ho sostituito con value al posto di switch_pos
+int switch_device(int device_id, char* label, char* value){
     int index = -1;
     for (int i = 0; i < device_count; i++) {
         if (devices[i].id == device_id && devices[i].active) {
@@ -288,7 +320,7 @@ int switch_device(int device_id, char* label, char* value){ //ho sostituito con 
     request.command = CMD_SWITCH;
     request.sender = 0;
     request.receiver = device_id;
-    snprintf(request.payload, sizeof(request.payload), "%s:%s", label, value); //ho sostituito con value al posto di switch_pos
+    snprintf(request.payload, sizeof(request.payload), "%s:%s", label, value);
 
     send_message(fd, &request);
 
@@ -296,7 +328,7 @@ int switch_device(int device_id, char* label, char* value){ //ho sostituito con 
     receive_message(fd, &response);
     close_connection(fd);
 
-    return (response.command == CMD_ACK) ? SUCCESS : SWITCH_REJECTED; //ho cambiato perchè cosi non stampa SUCCESS anche quando fallisce
+    return (response.command == CMD_ACK) ? SUCCESS : SWITCH_REJECTED;
 }
 
 // Check if linking device_id to parent_id would create a cycle
@@ -380,4 +412,3 @@ int delete_device(int device_id) {
 
     return SUCCESS;
 }
-
