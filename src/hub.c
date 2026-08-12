@@ -77,6 +77,45 @@ static int hub_propagate_switch(int child_id, const char *payload) {
     return (resp.command == CMD_ACK) ? 0 : -1;
 }
 
+/* "Lingua" dello switch di un figlio: dipende dal tipo di device.
+ * La deduciamo dallo stato che il figlio riporta (on/off -> power, open/closed -> open/close). */
+typedef enum { VOCAB_UNKNOWN, VOCAB_POWER, VOCAB_OPENCLOSE } Vocab;
+
+static Vocab child_vocab(int child_id) {
+    char st[64];
+    if (hub_query_child(child_id, st, sizeof st) != 0) return VOCAB_UNKNOWN;
+    if (strcmp(st, "on") == 0 || strcmp(st, "off") == 0)     return VOCAB_POWER;
+    if (strcmp(st, "open") == 0 || strcmp(st, "closed") == 0) return VOCAB_OPENCLOSE;
+    return VOCAB_UNKNOWN;
+}
+
+/* Manda a un figlio uno switch on/off tradotto nella sua lingua.
+ * value: 1 = attiva (on/open), 0 = disattiva (off/closed).
+ * Ritorna -1 se il figlio non è raggiungibile o non ne capiamo la lingua. */
+static int hub_switch_child(int child_id, int value) {
+    char payload[64];
+    switch (child_vocab(child_id)) {
+    case VOCAB_POWER:
+        snprintf(payload, sizeof payload, "power:%d", value);
+        break;
+    case VOCAB_OPENCLOSE:
+        /* gli switch open/close sono momentanei: per aprire "open:1", per chiudere "close:1" */
+        snprintf(payload, sizeof payload, value ? "open:1" : "close:1");
+        break;
+    default:
+        return -1;
+    }
+    return hub_propagate_switch(child_id, payload);
+}
+
+/* Normalizza lo stato di un figlio a un valore binario:
+ * 1 = attivo (on/open), 0 = spento (off/closed), -1 = sconosciuto. */
+static int state_to_bit(const char *state) {
+    if (strcmp(state, "on") == 0 || strcmp(state, "open") == 0)     return 1;
+    if (strcmp(state, "off") == 0 || strcmp(state, "closed") == 0)  return 0;
+    return -1;
+}
+
 /* Costruisce in 'out' la risposta al comando 'in'.
  * Payload CMD_LINK: "child:<id>" (nuovo figlio) o "parent:<id>" (nuovo genitore). */
 static void handle_message(Hub *h, const Message *in, Message *out) {
@@ -94,14 +133,19 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
             break;
         }
         char first[64] = {0}, st[64];
-        int consistent = 1, crashed = -1, got = 0;
+        int consistent = 1, crashed = -1, first_bit = -1;
         for (int i = 0; i < h->num_children; i++) {
             if (hub_query_child(h->children[i], st, sizeof st) != 0) {
                 crashed = h->children[i];       /* figlio non raggiungibile */
                 break;
             }
-            if (!got) { strncpy(first, st, sizeof first - 1); got = 1; }
-            else if (strcmp(st, first) != 0) consistent = 0;
+            int bit = state_to_bit(st);         /* on/open -> 1, off/closed -> 0 */
+            if (first_bit == -1) {              /* primo figlio: memorizzo stato di riferimento */
+                first_bit = bit;
+                strncpy(first, st, sizeof first - 1);
+            } else if (bit != first_bit) {      /* confronto logico, non a stringa */
+                consistent = 0;
+            }
         }
         if (crashed != -1) {
             out->command = CMD_ERROR;
@@ -121,9 +165,18 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
             snprintf(out->payload, sizeof out->payload, "nessun figlio a cui propagare");
             break;
         }
+        /* All'hub interessa solo il valore on/off; l'etichetta (es. "power") la ignoriamo
+         * e la ricostruiamo per ogni figlio nella sua lingua. */
+        const char *colon = strchr(in->payload, ':');
+        int value = colon ? atoi(colon + 1) : -1;
+        if (value != 0 && value != 1) {
+            out->command = CMD_ERROR;
+            snprintf(out->payload, sizeof out->payload, "INVALID_ARGUMENT");
+            break;
+        }
         int crashed = -1;
         for (int i = 0; i < h->num_children; i++) {
-            if (hub_propagate_switch(h->children[i], in->payload) != 0) {
+            if (hub_switch_child(h->children[i], value) != 0) {
                 crashed = h->children[i];
                 break;
             }
