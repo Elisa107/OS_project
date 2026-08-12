@@ -108,10 +108,10 @@ int controller_shell(){
                 break;
             }
             case SHELL_SWITCH: {
-                int id, pos;
-                char label[32];
-                sscanf(line, "switch %d %s %d", &id, label, &pos);
-                int result = switch_device(id, label, pos);
+                int id;
+                char label[32], value[64];
+                sscanf(line, "switch %d %s %s", &id, label, value);
+                int result = switch_device(id, label, value); //ho modificato queste 4 righe per far funzionare il timer. ho sostituito pos con value
                 if (result != SUCCESS) {
                     printf("Error: %s\n", error_to_string(result));
                 } else {
@@ -247,7 +247,7 @@ int list_devices() {
     for (int i = 0; i < device_count; i++) {
         if (!devices[i].active) continue;
 
-        char state_info[64] = "N/A";
+        char state_info[256] = "N/A"; //ho modificato da 64 a 256 per eliminare il warning
         int fd = connect_device(devices[i].socket_path);
         if (fd != -1) {
             Message req, resp;
@@ -268,7 +268,7 @@ int list_devices() {
     return SUCCESS;
 }
 
-int switch_device(int device_id, char* label, int switch_pos){
+int switch_device(int device_id, char* label, char* value){ //ho sostituito con value al posto di switch_pos
     int index = -1;
     for (int i = 0; i < device_count; i++) {
         if (devices[i].id == device_id && devices[i].active) {
@@ -288,20 +288,15 @@ int switch_device(int device_id, char* label, int switch_pos){
     request.command = CMD_SWITCH;
     request.sender = 0;
     request.receiver = device_id;
-    snprintf(request.payload, sizeof(request.payload), "%s:%d", label, switch_pos);
+    snprintf(request.payload, sizeof(request.payload), "%s:%s", label, value); //ho sostituito con value al posto di switch_pos
 
     send_message(fd, &request);
 
     Message response;
     receive_message(fd, &response);
-
-    if (response.command == CMD_ACK) {
-        printf("Switch updated: %s\n", response.payload);
-    } else {
-        printf("Errore nell'aggiornamento dello switch\n");
-    }
-
     close_connection(fd);
+
+    return (response.command == CMD_ACK) ? SUCCESS : SWITCH_REJECTED; //ho cambiato perchè cosi non stampa SUCCESS anche quando fallisce
 }
 
 // Check if linking device_id to parent_id would create a cycle

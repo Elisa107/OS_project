@@ -147,15 +147,9 @@ static void handle_message(Timer *t, const Message *in, Message *out) {
         }
         if (strcmp(label, "begin") == 0 || strcmp(label, "end") == 0) {
             int mm = parse_hhmm(val);
-            time_t now = time(NULL);
-            struct tm *lt = localtime(&now);
-            int now_min = lt->tm_hour * 60 + lt->tm_min;
             if (mm < 0) {
                 out->command = CMD_ERROR;
                 snprintf(out->payload, sizeof out->payload, "orario non valido");
-            } else if (mm <= now_min) {
-                out->command = CMD_ERROR;
-                snprintf(out->payload, sizeof out->payload, "orario nel passato");
             } else if (strcmp(label, "begin") == 0) {
                 if (t->end_min >= 0 && mm >= t->end_min) {
                     out->command = CMD_ERROR;

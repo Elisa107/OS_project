@@ -13,6 +13,7 @@ const char* error_to_string(int error_code) {
         case TOO_MANY_SWITCHES: return "Troppi switch per questo device";
         case NO_DEVICES: return "Nessun device presente";
         case NO_CHILDREN: return "Nessun device collegato";
+        case SWITCH_REJECTED: return "Comando rifiutato dal device";
         default: return "Errore sconosciuto";
     }
 }
