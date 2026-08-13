@@ -58,8 +58,8 @@ static int hub_query_child(int child_id, char *state_out, size_t n) {
     return 0;
 }
 
-/* Propaga uno switch a un figlio. Ritorna -1 se non raggiungibile o errore. */
-static int hub_propagate_switch(int child_id, const char *payload) {
+/* Propaga uno switch a un figlio. Ritorna -1 se non raggiungibile o erroreù. */
+static int hub_propagate_switch(int child_id, const char *payload, int sender) {
     char path[SOCKET_PATH_LEN];
     snprintf(path, sizeof path, "/tmp/domotic_%d.sock", child_id);
     int fd = connect_device(path);
@@ -67,7 +67,7 @@ static int hub_propagate_switch(int child_id, const char *payload) {
 
     Message req;
     memset(&req, 0, sizeof req);
-    req.command = CMD_SWITCH; req.sender = -1; req.receiver = child_id;
+    req.command = CMD_SWITCH; req.sender = sender; req.receiver = child_id;
     strncpy(req.payload, payload, sizeof req.payload - 1);
     if (send_message(fd, &req) != 0) { close_connection(fd); return -1; }
 
@@ -92,7 +92,7 @@ static Vocab child_vocab(int child_id) {
 /* Manda a un figlio uno switch on/off tradotto nella sua lingua.
  * value: 1 = attiva (on/open), 0 = disattiva (off/closed).
  * Ritorna -1 se il figlio non è raggiungibile o non ne capiamo la lingua. */
-static int hub_switch_child(int child_id, int value) {
+static int hub_switch_child(int child_id, int value, int sender) {
     char payload[64];
     switch (child_vocab(child_id)) {
     case VOCAB_POWER:
@@ -105,7 +105,7 @@ static int hub_switch_child(int child_id, int value) {
     default:
         return -1;
     }
-    return hub_propagate_switch(child_id, payload);
+    return hub_propagate_switch(child_id, payload, sender);
 }
 
 /* Normalizza lo stato di un figlio a un valore binario:
@@ -176,7 +176,7 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
         }
         int crashed = -1;
         for (int i = 0; i < h->num_children; i++) {
-            if (hub_switch_child(h->children[i], value) != 0) {
+            if (hub_switch_child(h->children[i], value, in->sender) != 0) {
                 crashed = h->children[i];
                 break;
             }
@@ -237,6 +237,7 @@ void hub_run(int srv_fd, int id) {
             Message out;
             handle_message(&h, &in, &out);
             send_message(client, &out);
+            notify_controller_override(id, &in, &out);
         }
         close_connection(client);
     }

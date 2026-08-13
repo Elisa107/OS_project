@@ -43,14 +43,20 @@ static int parse_hhmm(const char *s) {
     if (h < 0 || h > 23 || m < 0 || m > 59) return -1;
     return h * 60 + m;
 }
+// Per controllare se inserisco in begin un orario che è già passato
+static int current_minutes_now(void) {
+    time_t now = time(NULL);
+    struct tm *lt = localtime(&now);
+    return lt->tm_hour * 60 + lt->tm_min;
+}
 
-static int timer_send_child(int child_id, const char *payload) {
+static int timer_send_child(int child_id, const char *payload, int sender) {
     char path[SOCKET_PATH_LEN];
     snprintf(path, sizeof path, "/tmp/domotic_%d.sock", child_id);
     int fd = connect_device(path);
     if (fd == -1) return -1;
     Message req; memset(&req, 0, sizeof req);
-    req.command = CMD_SWITCH; req.sender = -1; req.receiver = child_id;
+    req.command = CMD_SWITCH; req.sender = sender; req.receiver = child_id;
     strncpy(req.payload, payload, sizeof req.payload - 1);
     if (send_message(fd, &req) != 0) { close_connection(fd); return -1; }
     Message resp;
@@ -95,7 +101,7 @@ static void timer_actuate(Timer *t, int on) {
         snprintf(p, sizeof p, on ? "open:1" : "close:1");
     else
         snprintf(p, sizeof p, "%s:%d", t->sw_label, on ? 1 : 0);
-    if (timer_send_child(t->child_id, p) == 0) {
+    if (timer_send_child(t->child_id, p, -1) == 0) {
         char st[64];
         if (timer_query_child(t->child_id, st, sizeof st) == 0)
             strncpy(t->expected, st, sizeof t->expected - 1);
@@ -166,6 +172,9 @@ static void handle_message(Timer *t, const Message *in, Message *out) {
             if (mm < 0) {
                 out->command = CMD_ERROR;
                 snprintf(out->payload, sizeof out->payload, "orario non valido");
+            } else if (mm < current_minutes_now()) {
+                out->command = CMD_ERROR;
+                snprintf(out->payload, sizeof out->payload, "orario nel passato");
             } else if (strcmp(label, "begin") == 0) {
                 if (t->end_min >= 0 && mm >= t->end_min) {
                     out->command = CMD_ERROR;
@@ -191,7 +200,7 @@ static void handle_message(Timer *t, const Message *in, Message *out) {
             if (t->child_id < 0) {
                 out->command = CMD_ERROR;
                 snprintf(out->payload, sizeof out->payload, "nessun figlio collegato");
-            } else if (timer_send_child(t->child_id, in->payload) != 0) {
+            } else if (timer_send_child(t->child_id, in->payload, in->sender) != 0) {
                 out->command = CMD_ERROR;
                 snprintf(out->payload, sizeof out->payload, "figlio %d non raggiungibile", t->child_id);
             } else {
@@ -278,6 +287,7 @@ void timer_run(int srv_fd, int id) {
             Message out;
             handle_message(&t, &in, &out);
             send_message(client, &out);
+            notify_controller_override(id, &in, &out);
         }
         close_connection(client);
     }

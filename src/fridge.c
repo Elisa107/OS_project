@@ -73,6 +73,11 @@ static void handle_message(Fridge *f, const Message *in, Message *out) {
             }
             snprintf(out->payload, sizeof out->payload, "state=%s", f->state==OPEN?"open":"closed");
         } else if (strcmp(label, "perc") == 0) {
+            if (in->sender != -1) {               /* "solo da manuale" per specifica */
+                out->command = CMD_ERROR;
+                snprintf(out->payload, sizeof out->payload, "SWITCH_REJECTED: perc modificabile solo manualmente");
+                break;
+            }
             int v = atoi(val);
             if (v < 0 || v > 100) {
                 out->command = CMD_ERROR;
@@ -82,6 +87,11 @@ static void handle_message(Fridge *f, const Message *in, Message *out) {
                 snprintf(out->payload, sizeof out->payload, "perc=%d", f->perc);
             }
         } else if (strcmp(label, "thermostat") == 0) {
+            if (in->sender != -1) {               /* "solo da manuale" per specifica */
+                out->command = CMD_ERROR;
+                snprintf(out->payload, sizeof out->payload, "SWITCH_REJECTED: thermostat modificabile solo manualmente");
+                break;
+            }
             f->thermostat = atof(val);
             snprintf(out->payload, sizeof out->payload, "thermostat=%.1f", f->thermostat);
         } else if (strcmp(label, "delay") == 0) {
@@ -170,6 +180,7 @@ void fridge_run(int srv_fd, int id) {
             Message out;
             handle_message(&f, &in, &out);
             send_message(client, &out);
+            notify_controller_override(id, &in, &out);
         }
         close_connection(client);
     }

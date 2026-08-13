@@ -9,6 +9,7 @@ int connect_device(char *path);
 int send_message(int fd, Message *msg);
 int receive_message(int fd, Message *msg);
 void close_connection(int fd);
+void notify_controller_override(int id, const Message *in, const Message *out);
 void remove_socket(const char *path);
 
 #endif

@@ -340,8 +340,9 @@ int info(int device_id, char *output){
             close_connection(fd);
 
             snprintf(output, 512,
-                "Device ID: %d\nType: %s\nRole: %s\nState/Switches: %s\n",
+                "Device ID: %d\nPID: %d\nType: %s\nRole: %s\nState/Switches: %s\n",
                 devices[i].id,
+                devices[i].pid,
                 type_to_string(devices[i].type),
                 is_control_device(devices[i].type) ? "Control" : "Interaction",
                 response.payload);

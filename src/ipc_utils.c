@@ -104,3 +104,27 @@ void remove_socket(const char *path) {
     unlink(path);
 }
 
+/* prende id, in, out, e fa sempre la stessa cosa (controlla se è un override manuale 
+riuscito, si connette al Controller, manda CMD_OVERRIDE).*/
+void notify_controller_override(int id, const Message *in, const Message *out) {
+    if (in->sender != -1) return;
+    if (in->command != CMD_SWITCH) return;
+    if (out->command != CMD_ACK) return;
+
+    char ctrl_path[SOCKET_PATH_LEN];
+    snprintf(ctrl_path, sizeof(ctrl_path), "%s", CONTROLLER_SOCKET_PATH);
+
+    int fd = connect_device(ctrl_path);
+    if (fd == -1) return;
+
+    Message notify;
+    memset(&notify, 0, sizeof notify);
+    notify.command = CMD_OVERRIDE;
+    notify.sender = id;
+    notify.receiver = 0;
+    snprintf(notify.payload, sizeof notify.payload, "%s", out->payload);
+
+    send_message(fd, &notify);
+    close_connection(fd);
+}
+

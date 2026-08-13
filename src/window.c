@@ -130,6 +130,7 @@ void window_run(int srv_fd, int id) {
             Message out;
             handle_message(&w, &in, &out);
             send_message(client, &out);
+            notify_controller_override(id, &in, &out);
         }
         close_connection(client);
     }
