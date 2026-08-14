@@ -34,7 +34,9 @@ int create_server(int device_id, char *path) {
         return -1;
     }
 
-    printf("Device %d is listening on %s\n", device_id, path);
+    /* stderr, not stdout: printed by a device process, not the Controller —
+     * sharing the Controller's stdout scrambled its "> " prompt. */
+    fprintf(stderr, "Device %d is listening on %s\n", device_id, path);
     return srv;
 }
 
@@ -89,7 +91,11 @@ int receive_message(int fd, Message *msg) {
             return -1; 
         }
         if (n == 0) {
-            break;
+            /* Peer closed the connection before sending a full message
+             * (e.g. the device process crashed mid-response): this is an
+             * error, not a valid empty read, so it must not be reported
+             * as success with a half-filled/garbage Message. */
+            return -1;
         }
         total += n;
     }
@@ -127,4 +133,3 @@ void notify_controller_override(int id, const Message *in, const Message *out) {
     send_message(fd, &notify);
     close_connection(fd);
 }
-

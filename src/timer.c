@@ -12,6 +12,7 @@
 #include "signal_utils.h"
 
 typedef struct {
+    int  id;            /* this timer's own id, used as sender for automatic actions */
     int  child_id;      /* device controllato (-1 se nessuno) */
     int  parent_id;
     int  begin_min;     /* orario di accensione in minuti dalla mezzanotte (-1 = non impostato) */
@@ -21,6 +22,7 @@ typedef struct {
 } Timer;
 
 static void timer_init(Timer *t) {
+    t->id = -1;
     t->child_id = -1; t->parent_id = -1;
     t->begin_min = -1; t->end_min = -1;
     strcpy(t->sw_label, "power");
@@ -101,7 +103,9 @@ static void timer_actuate(Timer *t, int on) {
         snprintf(p, sizeof p, on ? "open:1" : "close:1");
     else
         snprintf(p, sizeof p, "%s:%d", t->sw_label, on ? 1 : 0);
-    if (timer_send_child(t->child_id, p, -1) == 0) {
+    /* sender = t->id (not -1): automatic action from the timer's own
+     * schedule, not a manual override — child must not report it as one. */
+    if (timer_send_child(t->child_id, p, t->id) == 0) {
         char st[64];
         if (timer_query_child(t->child_id, st, sizeof st) == 0)
             strncpy(t->expected, st, sizeof t->expected - 1);
@@ -249,6 +253,7 @@ void timer_run(int srv_fd, int id) {
 
     Timer t;
     timer_init(&t);
+    t.id = id;
     srand((unsigned)getpid());
     fprintf(stderr, "[timer %d] avviato (pid=%d)\n\n", id, getpid());
 

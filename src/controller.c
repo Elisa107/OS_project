@@ -52,6 +52,16 @@ int device_count = 0;
 
 static int controller_srv_fd = -1;
 
+/* Closes and removes the Controller's socket. Must be called on every shell
+ * exit path (the "exit" command or EOF on stdin), not just at startup. */
+static void close_controller_socket(void) {
+    if (controller_srv_fd != -1) {
+        close_connection(controller_srv_fd);
+        controller_srv_fd = -1;
+    }
+    remove_socket(CONTROLLER_SOCKET_PATH);
+}
+
 static int open_controller_socket(void) {
     unlink(CONTROLLER_SOCKET_PATH); // rimuove il file residuo di un run precedente
 
@@ -89,6 +99,11 @@ static void handle_incoming_notification(void) {
     if (receive_message(client, &in) == 0) {
         if (in.command == CMD_OVERRIDE) {
             printf("\n[NOTIFICA] Device %d: override manuale -> %s\n", in.sender, in.payload);
+            /* Async notification, outside the normal shell request/response
+             * cycle: without reprinting the prompt here, "> " disappears
+             * after a notification until the next command. */
+            printf("> ");
+            fflush(stdout);
         }
     }
     close_connection(client);
@@ -168,6 +183,7 @@ int controller_shell(){
         }
 
         if (fgets(line, sizeof(line), stdin) == NULL) {
+            close_controller_socket();
             break;
         }
 
@@ -249,6 +265,7 @@ int controller_shell(){
                         waitpid(devices[i].pid, NULL, 0);
                     }
                 }
+                close_controller_socket();
                 return SUCCESS;
             }
             default:
@@ -257,6 +274,7 @@ int controller_shell(){
         printf("> ");
         fflush(stdout);    
     }
+    close_controller_socket();  /* also covers exit via select() error */
     return SUCCESS;
 }
 
@@ -277,7 +295,10 @@ int add_device(DeviceType type, int parent_id) {
             exit(1);
         }
 
-        printf("Device %d started, listening on %s\n", new_id, path);
+        /* stderr, not stdout: this is printed by the device (child) process,
+         * not the Controller — mixing it into the Controller's own stdout
+         * was throwing off the "> " prompt (issue #4). */
+        fprintf(stderr, "Device %d started, listening on %s\n", new_id, path);
 
         /* AGGIUNTA (Evelin): dispatch di Bulb/Window verso bulb_run()/window_run(),
          * che non ritornano mai (restano in ascolto finché non ricevono SIGTERM) */
@@ -336,7 +357,10 @@ int info(int device_id, char *output){
             send_message(fd, &request);
 
             Message response;
-            receive_message(fd, &response);
+            if (receive_message(fd, &response) != 0) {
+                close_connection(fd);
+                return IPC_ERROR;
+            }
             close_connection(fd);
 
             snprintf(output, 512,
@@ -368,8 +392,11 @@ int list_devices() {
             req.sender = 0;
             req.receiver = devices[i].id;
             send_message(fd, &req);
-            receive_message(fd, &resp);
-            snprintf(state_info, sizeof(state_info), "%s", resp.payload);
+            if (receive_message(fd, &resp) == 0) {
+                snprintf(state_info, sizeof(state_info), "%s", resp.payload);
+            } else {
+                snprintf(state_info, sizeof(state_info), "IPC_ERROR");
+            }
             close_connection(fd);
         }
 
@@ -406,7 +433,10 @@ int switch_device(int device_id, char* label, char* value){
     send_message(fd, &request);
 
     Message response;
-    receive_message(fd, &response);
+    if (receive_message(fd, &response) != 0) {
+        close_connection(fd);
+        return IPC_ERROR;
+    }
     close_connection(fd);
 
     return (response.command == CMD_ACK) ? SUCCESS : SWITCH_REJECTED;
@@ -464,7 +494,15 @@ int link_devices(int device_id, int parent_id){
         msg_child.command = CMD_LINK;
         msg_child.sender = 0;
         msg_child.receiver = device_id;
-        snprintf(msg_child.payload, sizeof(msg_child.payload), "%d", parent_id);
+        /* Hub and Timer expect a "parent:<id>" payload (per their
+         * handle_message), while leaf devices (Bulb/Window/Fridge) expect
+         * just the bare number: without this branch, linking a Hub/Timer as
+         * a child of another control device always failed to parse. */
+        if (is_control_device(devices[device_id].type)) {
+            snprintf(msg_child.payload, sizeof(msg_child.payload), "parent:%d", parent_id);
+        } else {
+            snprintf(msg_child.payload, sizeof(msg_child.payload), "%d", parent_id);
+        }
         send_message(fd_child, &msg_child);
 
         Message resp_child;
