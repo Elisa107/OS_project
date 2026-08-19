@@ -50,13 +50,6 @@ int next_id = 0; // keep track of the next device ID to assign
 Device devices[MAX_DEVICES];
 int device_count = 0;
 
-/* AGGIUNTA (punto 3, Controller come device secondo 2.2.2): id riservato per
- * riferirsi al Controller stesso (mai usato da add_device(), che parte da 0)
- * e stato on/off del Controller. Non essendo il Controller dentro devices[],
- * il suo stato va tenuto in una variabile a parte. */
-#define CONTROLLER_ID -1
-static DeviceOnState controller_state = ON;
-
 static int controller_srv_fd = -1;
 
 /* Closes and removes the Controller's socket. Must be called on every shell
@@ -215,15 +208,7 @@ int controller_shell(){
                     break;
                 }
                 int new_id = add_device(type, -1);
-                /* MODIFICA (punto 4): add_device() può fallire (es. fork() non
-                 * riuscita) e restituire un codice di errore negativo. Prima
-                 * veniva stampato comunque "Device created with ID: -5", come
-                 * se fosse un id valido: ora controlliamo l'esito. */
-                if (new_id < 0) {
-                    printf("Error: %s\n", error_to_string(new_id));
-                } else {
-                    printf("Device created with ID: %d\n", new_id);
-                }
+                printf("Device created with ID: %d\n", new_id);
                 break;
             }
             case SHELL_DEL: {
@@ -252,36 +237,15 @@ int controller_shell(){
                 int id;
                 char label[32], value[64];
                 sscanf(line, "switch %d %s %s", &id, label, value);
-                /* AGGIUNTA (punto 3, switch "main" del Controller secondo 2.2.2):
-                 * id -1 è il Controller. Il suo unico switch è "main": posto a
-                 * off/0 spegne l'intero sistema, con la stessa procedura di
-                 * "exit" (SIGTERM a tutti i device, waitpid su ciascuno,
-                 * chiusura del socket). Qualsiasi altra label è rifiutata. */
-                if (id == CONTROLLER_ID) {
-                    if (strcmp(label, "main") != 0) {
-                        printf("Error: %s\n", error_to_string(INVALID_COMMAND));
-                        break;
-                    }
-                    int off = (strcmp(value, "0") == 0 || strcmp(value, "off") == 0);
-                    if (off) {
-                        controller_state = OFF;
-                        for (int i = 0; i < device_count; i++) {
-                            if (devices[i].active) {
-                                kill(devices[i].pid, SIGTERM);
-                                waitpid(devices[i].pid, NULL, 0);
-                            }
-                        }
-                        close_controller_socket();
-                        return SUCCESS;
-                    } else {
-                        controller_state = ON;
-                        printf("Switch updated successfully\n");
-                    }
-                    break;
-                }
-                int result = switch_device(id, label, value);
+                char device_msg[256];
+                int result = switch_device(id, label, value, device_msg, sizeof device_msg);
                 if (result != SUCCESS) {
-                    printf("Error: %s\n", error_to_string(result));
+                    /* device_msg contiene il motivo specifico dato dal device
+                     * (es. "orario nel passato"), non solo il codice generico. */
+                    if (device_msg[0] != '\0')
+                        printf("Error: %s (%s)\n", error_to_string(result), device_msg);
+                    else
+                        printf("Error: %s\n", error_to_string(result));
                 } else {
                     printf("Switch updated successfully\n");
                 }
@@ -380,28 +344,6 @@ int add_device(DeviceType type, int parent_id) {
 }
 
 int info(int device_id, char *output){
-    /* AGGIUNTA (punto 3, Controller come device secondo 2.2.2): id -1 non è
-     * un device dell'array devices[], è il Controller stesso. Rispondiamo
-     * subito con il suo stato, senza cercare nell'array. */
-    if (device_id == CONTROLLER_ID) {
-        /* AGGIUNTA (punto 4, registro "num" secondo 2.2.2): conta i device
-         * attivi collegati direttamente al Controller, cioè quelli senza un
-         * genitore logico (parent_id == -1). */
-        int num = 0;
-        for (int i = 0; i < device_count; i++) {
-            if (devices[i].active && devices[i].parent_id == CONTROLLER_ID) {
-                num++;
-            }
-        }
-        snprintf(output, 512,
-            "Device ID: %d\nPID: %d\nType: CONTROLLER\nRole: Control\nState/Switches: state=%s num=%d\n",
-            CONTROLLER_ID,
-            getpid(),
-            controller_state == ON ? "on" : "off",
-            num);
-        return SUCCESS;
-    }
-
     for (int i = 0; i < device_count; i++) {
         if (devices[i].id == device_id) {
 
@@ -472,7 +414,8 @@ int list_devices() {
     return SUCCESS;
 }
 
-int switch_device(int device_id, char* label, char* value){
+int switch_device(int device_id, char* label, char* value, char *device_msg, size_t device_msg_len){
+    if (device_msg && device_msg_len > 0) device_msg[0] = '\0';
     int index = -1;
     for (int i = 0; i < device_count; i++) {
         if (devices[i].id == device_id && devices[i].active) {
@@ -502,6 +445,13 @@ int switch_device(int device_id, char* label, char* value){
         return IPC_ERROR;
     }
     close_connection(fd);
+
+    /* Il device spiega SEMPRE il motivo esatto nel payload (es. "orario nel
+     * passato", "begin deve precedere end"), non solo un generico rifiuto:
+     * lo passiamo al chiamante invece di scartarlo. */
+    if (response.command != CMD_ACK && device_msg && device_msg_len > 0) {
+        snprintf(device_msg, device_msg_len, "%s", response.payload);
+    }
 
     return (response.command == CMD_ACK) ? SUCCESS : SWITCH_REJECTED;
 }

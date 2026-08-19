@@ -174,16 +174,25 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
             snprintf(out->payload, sizeof out->payload, "INVALID_ARGUMENT");
             break;
         }
-        int crashed = -1;
+        /* Propaga a TUTTI i figli anche se qualcuno non e' raggiungibile: un
+         * figlio caduto non deve impedire agli altri (ancora vivi) di
+         * ricevere il comando — prima un "break" al primo fallito lasciava
+         * tutti i figli successivi non aggiornati. */
+        int failed_count = 0;
+        char failed_list[64] = {0};
         for (int i = 0; i < h->num_children; i++) {
             if (hub_switch_child(h->children[i], value, in->sender) != 0) {
-                crashed = h->children[i];
-                break;
+                char tmp[16];
+                snprintf(tmp, sizeof tmp, failed_count ? ",%d" : "%d", h->children[i]);
+                strncat(failed_list, tmp, sizeof failed_list - strlen(failed_list) - 1);
+                failed_count++;
             }
         }
-        if (crashed != -1) {
+        if (failed_count > 0) {
             out->command = CMD_ERROR;
-            snprintf(out->payload, sizeof out->payload, "figlio %d non raggiungibile", crashed);
+            snprintf(out->payload, sizeof out->payload,
+                     "figli non raggiungibili: %s (propagato agli altri %d)",
+                     failed_list, h->num_children - failed_count);
         } else {
             snprintf(out->payload, sizeof out->payload, "propagato a %d figli", h->num_children);
         }
