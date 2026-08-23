@@ -133,23 +133,33 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
             break;
         }
         char first[64] = {0}, st[64];
-        int consistent = 1, crashed = -1, first_bit = -1;
+        int consistent = 1, first_bit = -1;
+        /* Interroga TUTTI i figli anche se qualcuno non e' raggiungibile:
+         * stesso principio del fix gia' applicato a CMD_SWITCH sotto - un
+         * figlio caduto non deve impedire di leggere lo stato degli altri. */
+        int failed_count = 0;
+        char failed_list[64] = {0};
         for (int i = 0; i < h->num_children; i++) {
             if (hub_query_child(h->children[i], st, sizeof st) != 0) {
-                crashed = h->children[i];       /* figlio non raggiungibile */
-                break;
+                char tmp[16];
+                snprintf(tmp, sizeof tmp, failed_count ? ",%d" : "%d", h->children[i]);
+                strncat(failed_list, tmp, sizeof failed_list - strlen(failed_list) - 1);
+                failed_count++;
+                continue;
             }
             int bit = state_to_bit(st);         /* on/open -> 1, off/closed -> 0 */
-            if (first_bit == -1) {              /* primo figlio: memorizzo stato di riferimento */
+            if (first_bit == -1) {              /* primo figlio raggiungibile: stato di riferimento */
                 first_bit = bit;
                 strncpy(first, st, sizeof first - 1);
             } else if (bit != first_bit) {      /* confronto logico, non a stringa */
                 consistent = 0;
             }
         }
-        if (crashed != -1) {
+        if (failed_count > 0) {
             out->command = CMD_ERROR;
-            snprintf(out->payload, sizeof out->payload, "figlio %d non raggiungibile", crashed);
+            snprintf(out->payload, sizeof out->payload,
+                     "figli non raggiungibili: %s (%d su %d)",
+                     failed_list, failed_count, h->num_children);
         } else if (consistent) {
             snprintf(out->payload, sizeof out->payload, "state=%s (%d figli)", first, h->num_children);
         } else {

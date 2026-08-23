@@ -207,8 +207,13 @@ int controller_shell(){
                     printf("Invalid device type\n");
                     break;
                 }
+
                 int new_id = add_device(type, -1);
-                printf("Device created with ID: %d\n", new_id);
+                if (new_id < 0) {
+                    printf("Error: %s\n", error_to_string(new_id));
+                } else {
+                    printf("Device created with ID: %d\n", new_id);
+                }
                 break;
             }
             case SHELL_DEL: {
@@ -479,7 +484,7 @@ int link_devices(int device_id, int parent_id){
         return LINK_FAILED;
     }
     if (!is_control_device(devices[parent_id].type)) {
-        return LINK_FAILED;
+        return DEVICE_TYPE_MISMATCH;
     }
     if (creates_cycle(device_id, parent_id)) {
         return LINK_FAILED;
@@ -540,6 +545,7 @@ int delete_device(int device_id) {
     }
     // poi termina il device stesso
     kill(devices[device_id].pid, SIGTERM);
+    waitpid(devices[device_id].pid, NULL, 0);
     devices[device_id].active = 0;
     devices[device_id].parent_id = -1;
 
