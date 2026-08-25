@@ -3,7 +3,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <errno.h>
-#include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,8 +15,6 @@
 #include "../include/ipc_utils.h"
 #include "../include/device.h"
 #include "../include/controller.h"
-
-/* AGGIUNTA (Evelin): include per bulb_run()/window_run(), usati in add_device() */
 #include "../include/bulb.h"
 #include "../include/window.h"
 #include "../include/hub.h"
@@ -36,13 +33,27 @@ typedef enum {
 } ShellCommand;
 
 ShellCommand parse_shell_command(char *cmd) {
-    if (strcmp(cmd, "list") == 0) return SHELL_LIST;
-    if (strcmp(cmd, "add") == 0) return SHELL_ADD;
-    if (strcmp(cmd, "del") == 0) return SHELL_DEL;
-    if (strcmp(cmd, "link") == 0) return SHELL_LINK;
-    if (strcmp(cmd, "switch") == 0) return SHELL_SWITCH;
-    if (strcmp(cmd, "info") == 0) return SHELL_INFO;
-    if (strcmp(cmd, "exit") == 0) return SHELL_EXIT;
+    if (strcmp(cmd, "list") == 0){
+        return SHELL_LIST;
+    }
+    if (strcmp(cmd, "add") == 0){
+        return SHELL_ADD;
+    }
+    if (strcmp(cmd, "del") == 0){
+        return SHELL_DEL;
+    }
+    if (strcmp(cmd, "link") == 0){
+        return SHELL_LINK;
+    }
+    if (strcmp(cmd, "switch") == 0){
+        return SHELL_SWITCH;
+    }
+    if (strcmp(cmd, "info") == 0){
+        return SHELL_INFO;
+    }
+    if (strcmp(cmd, "exit") == 0){
+        return SHELL_EXIT;
+    }
     return SHELL_UNKNOWN;
 }
 
@@ -52,10 +63,10 @@ int device_count = 0;
 
 static int controller_srv_fd = -1;
 
-/* Closes and removes the Controller's socket. Must be called on every shell
- * exit path (the "exit" command or EOF on stdin), not just at startup. */
+// closes and removes the Controller's socket. Called on every shell
+// exit path (the "exit" command or EOF on stdin)
 static void close_controller_socket(void) {
-    if (controller_srv_fd != -1) {
+    if (controller_srv_fd != -1){
         close_connection(controller_srv_fd);
         controller_srv_fd = -1;
     }
@@ -63,10 +74,10 @@ static void close_controller_socket(void) {
 }
 
 static int open_controller_socket(void) {
-    unlink(CONTROLLER_SOCKET_PATH); // rimuove il file residuo di un run precedente
+    unlink(CONTROLLER_SOCKET_PATH); // remove file from a previous run if needed
 
     int srv = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (srv == -1) {
+    if (srv == -1){
         perror("socket (controller)");
         return -1;
     }
@@ -76,7 +87,8 @@ static int open_controller_socket(void) {
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, CONTROLLER_SOCKET_PATH);
 
-    if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+    // file associated to the socket
+    if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) == -1){
         perror("bind (controller)");
         close(srv);
         return -1;
@@ -98,10 +110,8 @@ static void handle_incoming_notification(void) {
     Message in;
     if (receive_message(client, &in) == 0) {
         if (in.command == CMD_OVERRIDE) {
-            printf("\n[NOTIFICA] Device %d: override manuale -> %s\n", in.sender, in.payload);
-            /* Async notification, outside the normal shell request/response
-             * cycle: without reprinting the prompt here, "> " disappears
-             * after a notification until the next command. */
+            printf("\n[NOTIFICATION] Device %d: manual override -> %s\n", in.sender, in.payload);
+            // async notification, outside the normal shell request/response
             printf("> ");
             fflush(stdout);
         }
@@ -109,16 +119,14 @@ static void handle_incoming_notification(void) {
     close_connection(client);
 }
 
-/* Handler di SIGCHLD: quando un device figlio muore (crash o kill), il kernel
- * avvisa il Controller. Qui "raccogliamo" i processi morti con waitpid non
- * bloccante (WNOHANG) e segniamo i device corrispondenti come non piu' attivi,
- * rimuovendone il socket rimasto in /tmp. */
+// SIGCHLD handler: when a child crash, the kernel notifies the Controller
+// mark non-active devices (also delete the socket in /tmp)
 static void handle_sigchld(int sig) {
     (void)sig;
     pid_t pid;
     while ((pid = waitpid(-1, NULL, WNOHANG)) > 0) {
-        for (int i = 0; i < next_id; i++) {
-            if (devices[i].pid == pid && devices[i].active) {
+        for (int i = 0; i < next_id; i++){
+            if(devices[i].pid == pid && devices[i].active){
                 devices[i].active = 0;
                 remove_socket(devices[i].socket_path);
                 break;
@@ -127,16 +135,13 @@ static void handle_sigchld(int sig) {
     }
 }
 
+// handle SIGCHLD
 int controller_init(){
-    /* Installa la rilevazione dei crash. SA_RESTART fa riprendere le chiamate
-     * bloccanti (la lettura dei comandi) invece di interromperle quando muore
-     * un device; SA_NOCLDSTOP evita di ricevere SIGCHLD quando un figlio si
-     * limita a sospendersi. */
     struct sigaction sa;
     sa.sa_handler = handle_sigchld;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+    if(sigaction(SIGCHLD, &sa, NULL) == -1){
         perror("sigaction");
         return IPC_ERROR;
     }
@@ -147,11 +152,11 @@ int controller_init(){
 int controller_shell(){
     char line[256];
 
-    controller_init();   /* installa la rilevazione crash (SIGCHLD) */
+    controller_init();
 
     controller_srv_fd = open_controller_socket();
     if (controller_srv_fd == -1) {
-        fprintf(stderr, "Impossibile aprire il socket del Controller: le notifiche spontanee non funzioneranno\n");
+        fprintf(stderr, "Impossible to open the Controller's socket\n");
     }
 
     printf("> ");
@@ -162,24 +167,26 @@ int controller_shell(){
         FD_ZERO(&readfds);
         FD_SET(STDIN_FILENO, &readfds);
         int maxfd = STDIN_FILENO;
-        if (controller_srv_fd != -1) {
+        if (controller_srv_fd != -1){
             FD_SET(controller_srv_fd, &readfds);
             if (controller_srv_fd > maxfd) maxfd = controller_srv_fd;
         }
 
         int ready = select(maxfd + 1, &readfds, NULL, NULL, NULL);
-        if (ready == -1) {
-            if (errno == EINTR) continue; /* interrotta da SIGCHLD, si ritenta */
+        if(ready == -1){
+            if(errno == EINTR){
+                continue; //interrupted by SIGCHLD, retry
+            }
             perror("select");
             break;
         }
 
-        if (controller_srv_fd != -1 && FD_ISSET(controller_srv_fd, &readfds)) {
+        if(controller_srv_fd != -1 && FD_ISSET(controller_srv_fd, &readfds)){
             handle_incoming_notification();
         }
 
         if (!FD_ISSET(STDIN_FILENO, &readfds)) {
-            continue; /* era pronta solo la notifica: torna ad aspettare, stdin invariato */
+            continue;
         }
 
         if (fgets(line, sizeof(line), stdin) == NULL) {
@@ -191,7 +198,7 @@ int controller_shell(){
         char command[32];
         sscanf(line, "%s", command);
 
-        switch (parse_shell_command(command)) {
+        switch (parse_shell_command(command)){
             case SHELL_LIST: {
                 int result = list_devices();
                 if (result != SUCCESS) {
@@ -203,13 +210,13 @@ int controller_shell(){
                 char type_str[32];
                 sscanf(line, "add %s", type_str);
                 DeviceType type = parse_type(type_str);
-                if (type == -1) {
+                if (type == -1){
                     printf("Invalid device type\n");
                     break;
                 }
 
                 int new_id = add_device(type, -1);
-                if (new_id < 0) {
+                if (new_id < 0){
                     printf("Error: %s\n", error_to_string(new_id));
                 } else {
                     printf("Device created with ID: %d\n", new_id);
@@ -244,13 +251,13 @@ int controller_shell(){
                 sscanf(line, "switch %d %s %s", &id, label, value);
                 char device_msg[256];
                 int result = switch_device(id, label, value, device_msg, sizeof device_msg);
-                if (result != SUCCESS) {
-                    /* device_msg contiene il motivo specifico dato dal device
-                     * (es. "orario nel passato"), non solo il codice generico. */
-                    if (device_msg[0] != '\0')
+                if (result != SUCCESS){
+                    // device_msg contains the specific motivation given by the device
+                    if (device_msg[0] != '\0'){
                         printf("Error: %s (%s)\n", error_to_string(result), device_msg);
-                    else
+                    }else{
                         printf("Error: %s\n", error_to_string(result));
+                    }
                 } else {
                     printf("Switch updated successfully\n");
                 }
@@ -261,7 +268,7 @@ int controller_shell(){
                 char output[512];
                 sscanf(line, "info %d", &id);
                 int result = info(id, output);
-                if (result != SUCCESS) {
+                if (result != SUCCESS){
                     printf("Error: %s\n", error_to_string(result));
                 } else {
                     printf("%s", output);
@@ -271,7 +278,7 @@ int controller_shell(){
             case SHELL_EXIT: {
                 int i;
                 for (i = 0; i < device_count; i++) {
-                    if (devices[i].active) {
+                    if (devices[i].active){
                         kill(devices[i].pid, SIGTERM);
                         waitpid(devices[i].pid, NULL, 0);
                     }
@@ -285,7 +292,7 @@ int controller_shell(){
         printf("> ");
         fflush(stdout);    
     }
-    close_controller_socket();  /* also covers exit via select() error */
+    close_controller_socket();
     return SUCCESS;
 }
 
@@ -306,14 +313,11 @@ int add_device(DeviceType type, int parent_id) {
             exit(1);
         }
 
-        /* stderr, not stdout: this is printed by the device (child) process,
-         * not the Controller — mixing it into the Controller's own stdout
-         * was throwing off the "> " prompt (issue #4). */
+        //stderr, not stdout: this is printed by the device (child) process,
+        //not the Controller. Not mix the two 
         fprintf(stderr, "Device %d started, listening on %s\n", new_id, path);
 
-        /* AGGIUNTA (Evelin): dispatch di Bulb/Window verso bulb_run()/window_run(),
-         * che non ritornano mai (restano in ascolto finché non ricevono SIGTERM) */
-        if (type == BULB) {
+        if (type == BULB){
             bulb_run(srv_fd, new_id);
         } else if (type == WINDOW) {
             window_run(srv_fd, new_id);
@@ -325,13 +329,8 @@ int add_device(DeviceType type, int parent_id) {
             fridge_run(srv_fd, new_id);
         }
 
-        /* MODIFICA (Evelin): commento originale spostato qui sotto (prima era
-         * subito dopo "child (this process...)") e riformulato da "per ora,
-         * solo un placeholder: accetta una connessione e chiude" a quanto
-         * segue, perché ora vale solo per i tipi non ancora collegati sopra. */
-        // placeholder originale per i tipi non ancora collegati
-        // (qui dopo ci metterete la vera logica del device)
-        exit(0);  // il figlio termina quando la sua logica finisce (per ora subito)
+        //unreachable in practice, just defensive (shell valids the type before calling the run function)
+        exit(0);
     }
 
     // Controller
@@ -349,15 +348,15 @@ int add_device(DeviceType type, int parent_id) {
 }
 
 int info(int device_id, char *output){
-    for (int i = 0; i < device_count; i++) {
-        if (devices[i].id == device_id) {
+    for(int i = 0; i < device_count; i++) {
+        if (devices[i].id == device_id){
 
             if (!devices[i].active) {
                 return DEVICE_NOT_FOUND;
             }
 
             int fd = connect_device(devices[i].socket_path);
-            if (fd == -1) {
+            if(fd == -1) {
                 return IPC_ERROR;
             }
 
@@ -368,19 +367,18 @@ int info(int device_id, char *output){
             send_message(fd, &request);
 
             Message response;
-            if (receive_message(fd, &response) != 0) {
+            if (receive_message(fd, &response) != 0){
                 close_connection(fd);
                 return IPC_ERROR;
             }
             close_connection(fd);
 
-            snprintf(output, 512,
-                "Device ID: %d\nPID: %d\nType: %s\nRole: %s\nState/Switches: %s\n",
-                devices[i].id,
-                devices[i].pid,
-                type_to_string(devices[i].type),
-                is_control_device(devices[i].type) ? "Control" : "Interaction",
-                response.payload);
+            snprintf(output, 512, "Device ID: %d\nPID: %d\nType: %s\nRole: %s\nState/Switches: %s\n",
+                    devices[i].id,
+                    devices[i].pid,
+                    type_to_string(devices[i].type),
+                    is_control_device(devices[i].type) ? "Control" : "Interaction",
+                    response.payload);
 
             return SUCCESS;
         }
@@ -422,17 +420,17 @@ int list_devices() {
 int switch_device(int device_id, char* label, char* value, char *device_msg, size_t device_msg_len){
     if (device_msg && device_msg_len > 0) device_msg[0] = '\0';
     int index = -1;
-    for (int i = 0; i < device_count; i++) {
-        if (devices[i].id == device_id && devices[i].active) {
+    for (int i = 0; i < device_count; i++){
+        if (devices[i].id == device_id && devices[i].active){
             index = i;
             break;
         }
     }
-    if (index == -1) {
+    if (index == -1){
         return DEVICE_NOT_FOUND;
     }
     int fd = connect_device(devices[index].socket_path);
-    if (fd == -1) {
+    if (fd == -1){
         return IPC_ERROR;
     }
 
@@ -451,9 +449,6 @@ int switch_device(int device_id, char* label, char* value, char *device_msg, siz
     }
     close_connection(fd);
 
-    /* Il device spiega SEMPRE il motivo esatto nel payload (es. "orario nel
-     * passato", "begin deve precedere end"), non solo un generico rifiuto:
-     * lo passiamo al chiamante invece di scartarlo. */
     if (response.command != CMD_ACK && device_msg && device_msg_len > 0) {
         snprintf(device_msg, device_msg_len, "%s", response.payload);
     }
@@ -461,16 +456,16 @@ int switch_device(int device_id, char* label, char* value, char *device_msg, siz
     return (response.command == CMD_ACK) ? SUCCESS : SWITCH_REJECTED;
 }
 
-// Check if linking device_id to parent_id would create a cycle
+// check if linking device_id to parent_id would create a cycle
 int creates_cycle(int device_id, int parent_id) {
     int current = parent_id;
-    while (current != -1) {
-        if (current == device_id) {
+    while (current != -1){
+        if (current == device_id){
             return 1;
         }
         current = devices[current].parent_id;
     }
-    return 0;  // no cycles
+    return 0;
 }
 
 int link_devices(int device_id, int parent_id){
@@ -480,10 +475,10 @@ int link_devices(int device_id, int parent_id){
     if (parent_id < 0 || parent_id >= next_id || !devices[parent_id].active) {
         return DEVICE_NOT_FOUND;
     }
-    if (device_id == parent_id) {
+    if (device_id == parent_id){
         return LINK_FAILED;
     }
-    if (!is_control_device(devices[parent_id].type)) {
+    if (!is_control_device(devices[parent_id].type)){
         return DEVICE_TYPE_MISMATCH;
     }
     if (creates_cycle(device_id, parent_id)) {
@@ -492,7 +487,7 @@ int link_devices(int device_id, int parent_id){
 
     devices[device_id].parent_id = parent_id;
 
-    // avvisa il device genitore (se è un HUB o TIMER) del nuovo figlio
+    // notify parent device (if HUB or TIMER) about the new child
     int fd = connect_device(devices[parent_id].socket_path);
     if (fd != -1) {
         Message msg;
@@ -513,10 +508,8 @@ int link_devices(int device_id, int parent_id){
         msg_child.command = CMD_LINK;
         msg_child.sender = 0;
         msg_child.receiver = device_id;
-        /* Hub and Timer expect a "parent:<id>" payload (per their
-         * handle_message), while leaf devices (Bulb/Window/Fridge) expect
-         * just the bare number: without this branch, linking a Hub/Timer as
-         * a child of another control device always failed to parse. */
+        // Hub and Timer expect a "parent:<id>" payload, while other devices (Bulb/Window/Fridge) expect
+        // just the number
         if (is_control_device(devices[device_id].type)) {
             snprintf(msg_child.payload, sizeof(msg_child.payload), "parent:%d", parent_id);
         } else {
@@ -537,13 +530,12 @@ int delete_device(int device_id) {
     if (device_id < 0 || device_id >= next_id || !devices[device_id].active) {
         return DEVICE_NOT_FOUND;
     }
-    // prima cancella ricorsivamente tutti i figli logici (se ce ne sono)
+    // first delete all logical child
     for (i = 0; i < device_count; i++) {
         if (devices[i].active && devices[i].parent_id == device_id) {
-            delete_device(devices[i].id);   // ricorsione: cancella anche i "nipoti"
+            delete_device(devices[i].id);   // recursively deletes
         }
     }
-    // poi termina il device stesso
     kill(devices[device_id].pid, SIGTERM);
     waitpid(devices[device_id].pid, NULL, 0);
     devices[device_id].active = 0;

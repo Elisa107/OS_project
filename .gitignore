@@ -1,9 +1,9 @@
-# eseguibili generati dalla compilazione
+# executable generated after compilation
 controller
 manual_interaction
 
-# file oggetto
+# object files
 *.o
 
-# socket residui (di solito stanno in /tmp, ma per sicurezza)
+# remaining sockets
 *.sock

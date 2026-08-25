@@ -6,8 +6,7 @@
 #include "ipc_utils.h"
 #include "common.h"
 
-/*Signal handler SIGTERM nei device per pulire il socket file prima di uscire — è un miglioramento concreto da aggiungere in hub.c/timer.c/bulb.c/window.c/fridge.c*/
-
+// signal handler SIGTERM in devices to clean the socket before the exit
 static char cleanup_path[SOCKET_PATH_LEN];
 
 static void handle_sigterm(int sig) {

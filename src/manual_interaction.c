@@ -1,11 +1,3 @@
-/* manual_interaction.c — invia un comando direttamente a un device,
- * bypassando il Controller (traccia 2.2.5 / 2.3.2).
- * Uso:
- *   ./manual_interaction <id> info
- *   ./manual_interaction <id> switch <label> <on|off>
- *   ./manual_interaction <id> set <param> <value>
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,10 +6,10 @@
 #include "ipc_utils.h"
 #include "common.h"
 
-int main(int argc, char *argv[]) {
-    if (argc < 3) {
+int main(int argc, char *argv[]){
+    if (argc < 3){
         fprintf(stderr,
-            "Uso:\n"
+            "Use:\n"
             "  %s <id> info\n"
             "  %s <id> switch <label> <on|off>\n"
             "  %s <id> set <param> <value>\n",
@@ -30,22 +22,28 @@ int main(int argc, char *argv[]) {
 
     Message m;
     memset(&m, 0, sizeof m);
-    m.sender   = -1;   /* -1 = intervento manuale (il Controller usa 0) */
+    m.sender   = -1;   // -1 = manual (controller uses 0)
     m.receiver = id;
 
-    if (strcmp(cmd, "info") == 0) {
+    if (strcmp(cmd, "info") == 0){
         m.command = CMD_INFO;
-    } else if (strcmp(cmd, "switch") == 0) {
-        if (argc < 5) { fprintf(stderr, "switch richiede <label> <on|off>\n"); return 1; }
+    } else if (strcmp(cmd, "switch") == 0){
+        if (argc < 5) { 
+            fprintf(stderr, "switch requires <label> <on|off>\n"); 
+            return 1; 
+        }
         int pos = (strcmp(argv[4], "on") == 0) ? 1 : 0;
         m.command = CMD_SWITCH;
         snprintf(m.payload, sizeof m.payload, "%s:%d", argv[3], pos);
-    } else if (strcmp(cmd, "set") == 0) {
-        if (argc < 5) { fprintf(stderr, "set richiede <param> <value>\n"); return 1; }
-        m.command = CMD_SWITCH;   /* perc/thermostat viaggiano su CMD_SWITCH */
+    } else if (strcmp(cmd, "set") == 0){
+        if(argc < 5){ 
+            fprintf(stderr, "set requires <param> <value>\n"); 
+            return 1; 
+        }
+        m.command = CMD_SWITCH;
         snprintf(m.payload, sizeof m.payload, "%s:%s", argv[3], argv[4]);
     } else {
-        fprintf(stderr, "Comando sconosciuto: %s\n", cmd);
+        fprintf(stderr, "Unknown command: %s\n", cmd);
         return 1;
     }
 
@@ -54,19 +52,19 @@ int main(int argc, char *argv[]) {
 
     int fd = connect_device(path);
     if (fd < 0) {
-        fprintf(stderr, "Impossibile connettersi al device %d (%s)\n", id, path);
+        fprintf(stderr, "Unable to connect to the device %d (%s)\n", id, path);
         return 1;
     }
 
     if (send_message(fd, &m) != 0) {
-        fprintf(stderr, "Invio fallito\n");
+        fprintf(stderr, "Failed to send\n");
         close_connection(fd);
         return 1;
     }
 
     Message r;
     if (receive_message(fd, &r) != 0) {
-        fprintf(stderr, "Nessuna risposta dal device\n");
+        fprintf(stderr, "No response from the device\n");
         close_connection(fd);
         return 1;
     }

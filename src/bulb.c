@@ -8,14 +8,18 @@
 #include "ipc_utils.h"
 #include "common.h"
 #include "signal_utils.h"
+#include "errors.h"
 
-typedef enum { OFF = 0, ON = 1 } BulbState;
+typedef enum { 
+    OFF = 0, 
+    ON = 1 
+} BulbState;
 
 typedef struct {
     BulbState state;
-    long    total_time;  /* secondi accumulati nelle accensioni precedenti */
-    time_t  on_since;    /* istante dell'accensione corrente (0 se spenta) */
-    int     parent_id;   /* id del genitore logico, -1 se non collegato */
+    long    total_time;  // seconds accumulated during previous start-ups
+    time_t  on_since;    // current power-on status (0 if switched off)
+    int     parent_id;   // logical parent ID, -1 if not linked
 } Bulb;
 
 static void bulb_init(Bulb *b) {
@@ -25,8 +29,8 @@ static void bulb_init(Bulb *b) {
     b->parent_id = -1;
 }
 
-/* Tempo totale acceso da riportare in INFO: somma delle sessioni passate
- * più, se il Bulb è acceso ora, il tempo trascorso dall'ultima accensione. */
+// total_time on to be displayed in INFO: the sum of previous sessions
+// plus, if the Bulb is currently on, the time elapsed since it was last switched on
 static long bulb_current_time(const Bulb *b) {
     long t = b->total_time;
     if (b->state == ON) {
@@ -44,7 +48,7 @@ static int parse_bit(const char *s, int *out) {
 }
 
 
-//Payload di CMD_SWITCH nel formato "label:pos", es: power:1 / power:0 
+// CMD_SWITCH payload (format "label:pos")
 static void handle_message(Bulb *b, const Message *in, Message *out) {
     memset(out, 0, sizeof *out);
     out->sender   = in->receiver;
@@ -52,63 +56,60 @@ static void handle_message(Bulb *b, const Message *in, Message *out) {
     out->command  = CMD_ACK;
 
     switch (in->command) {
-
-    case CMD_INFO: {
-        snprintf(out->payload, sizeof out->payload,
-            "state=%s time=%ld",
-            b->state == ON ? "on" : "off", bulb_current_time(b));
-        break;
-    }
-
-    case CMD_SWITCH: {
-        char label[32] = {0}, val[64] = {0};
-        if (sscanf(in->payload, "%31[^:]:%63s", label, val) < 1) {
-            out->command = CMD_ERROR;
-            snprintf(out->payload, sizeof out->payload, "INVALID_COMMAND");
-            break;
-        }
-        if (strcmp(label, "power") != 0) {   /* il Bulb ha un solo switch */
-            out->command = CMD_ERROR;
-            snprintf(out->payload, sizeof out->payload, "INVALID_COMMAND");
+        case CMD_INFO: {
+            snprintf(out->payload, sizeof out->payload, "state=%s time=%ld", b->state == ON ? "on" : "off", bulb_current_time(b));
             break;
         }
 
-        int pos;
-        if (!parse_bit(val, &pos)) {          /* valore non "0" né "1" -> errore esplicito */
-            out->command = CMD_ERROR;
-            snprintf(out->payload, sizeof out->payload, "INVALID_ARGUMENT");
-            break;
-        }
-
-        if (pos == 1) {                       /* accensione */
-            if (b->state == OFF) {
-                b->state = ON;
-                b->on_since = time(NULL);
+        case CMD_SWITCH: {
+            char label[32] = {0}, val[64] = {0};
+            if (sscanf(in->payload, "%31[^:]:%63s", label, val) < 1){ // label[32], val[64]. Parsing
+                out->command = CMD_ERROR;
+                snprintf(out->payload, sizeof out->payload, "%s", error_to_string(INVALID_COMMAND));
+                break;
             }
-        } else {                              /* spegnimento */
-            if (b->state == ON) {
-                b->total_time += (long)(time(NULL) - b->on_since);
-                b->on_since = 0;
+            if (strcmp(label, "power") != 0){   // bulb has 1 switch
+                out->command = CMD_ERROR;
+                snprintf(out->payload, sizeof out->payload, "%s", error_to_string(INVALID_COMMAND));
+                break;
             }
-            b->state = OFF;
+
+            int pos;
+            if (!parse_bit(val, &pos)){  // value neither 0 nor 1
+                out->command = CMD_ERROR;
+                snprintf(out->payload, sizeof out->payload, "%s", error_to_string(INVALID_ARGUMENT));
+                break;
+            }
+            if (pos == 1){  // power on
+                if (b->state == OFF){
+                    b->state = ON;
+                    b->on_since = time(NULL);
+                }
+            }else{  // power off
+                if (b->state == ON){
+                    b->total_time += (long)(time(NULL) - b->on_since);
+                    b->on_since = 0;
+                }
+                b->state = OFF;
+            }
+            snprintf(out->payload, sizeof out->payload, "state=%s", b->state == ON ? "on" : "off");
+            break;
         }
-        snprintf(out->payload, sizeof out->payload,
-            "state=%s", b->state == ON ? "on" : "off");
-        break;
-    }
 
-    case CMD_LINK: {                          /* imposta/aggiorna il genitore logico */
-        int pid = -1;
-        if (sscanf(in->payload, "%d", &pid) != 1) pid = in->sender;
-        b->parent_id = pid;
-        snprintf(out->payload, sizeof out->payload, "parent=%d", b->parent_id);
-        break;
-    }
+        case CMD_LINK: {  //update the logic parent
+            int pid = -1;
+            if (sscanf(in->payload, "%d", &pid) != 1){
+                pid = in->sender;
+            }
+            b->parent_id = pid;
+            snprintf(out->payload, sizeof out->payload, "parent=%d", b->parent_id);
+            break;
+        }
 
-    default:
-        out->command = CMD_ERROR;
-        snprintf(out->payload, sizeof out->payload, "INVALID_COMMAND");
-        break;
+        default:
+            out->command = CMD_ERROR;
+            snprintf(out->payload, sizeof out->payload, "%s", error_to_string(INVALID_COMMAND));
+            break;
     }
 }
 
@@ -120,14 +121,16 @@ void bulb_run(int srv_fd, int id) {
     Bulb b;
     bulb_init(&b);
     srand((unsigned)getpid());
-    fprintf(stderr, "[bulb %d] avviato (pid=%d)\n\n", id, getpid());
+    fprintf(stderr, "[bulb %d] launched (pid=%d)\n\n", id, getpid());
 
     while (1) {
         int client = accept_connection(srv_fd);
-        if (client == -1) continue;
+        if (client == -1){
+            continue;
+        }
 
         Message in;
-        if (receive_message(client, &in) == 0) {
+        if (receive_message(client, &in) == 0){
             sleep(1 + rand() % 3);
             Message out;
             handle_message(&b, &in, &out);

@@ -7,7 +7,7 @@ typedef enum{
     CMD_DELETE,
     CMD_ACK,
     CMD_ERROR,
-    CMD_OVERRIDE // notifica device->controller dopo override manuale (prima i device non comunicavano con controller, solo il contrario)
+    CMD_OVERRIDE // device->controller (manual override)
 } Command;
 
 typedef struct{
