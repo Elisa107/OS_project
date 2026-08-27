@@ -298,24 +298,34 @@ int controller_shell(){
 
 int add_device(DeviceType type, int parent_id) {
     int new_id = next_id++;
-    pid_t pid = fork();
+    int sync_pipe[2]; // pipe to see if the child is ready
+    if (pipe(sync_pipe) == -1){
+        return IPC_ERROR;
+    }
 
-    if (pid == -1) {
+    pid_t pid = fork();
+    if (pid == -1){
         perror("fork");
+        close(sync_pipe[0]);
+        close(sync_pipe[1]);
         return IPC_ERROR;
     }
 
     if (pid == 0){
-        // child (this process will become the new device)
+        close(sync_pipe[0]); // child doesn't read, only write
+
         char path[SOCKET_PATH_LEN];
         int srv_fd = create_server(new_id, path);
-        if (srv_fd == -1) {
+        if (srv_fd == -1){
+            close(sync_pipe[1]); // closing without writing. parent's read() returns 0 (EOF)
             exit(1);
         }
-
-        //stderr, not stdout: this is printed by the device (child) process,
-        //not the Controller. Not mix the two 
+ 
         fprintf(stderr, "Device %d started, listening on %s\n", new_id, path);
+
+        // signal the parent that the child is ready
+        write(sync_pipe[1], "1", 1);
+        close(sync_pipe[1]);
 
         if (type == BULB){
             bulb_run(srv_fd, new_id);
@@ -333,7 +343,17 @@ int add_device(DeviceType type, int parent_id) {
         exit(0);
     }
 
-    // Controller
+    // controller wait until the child's ready
+    close(sync_pipe[1]);
+    char ready;
+    ssize_t n = read(sync_pipe[0], &ready, 1);
+    close(sync_pipe[0]);
+
+    if (n <=0){
+        // child exited before signaling that it's ready
+        return IPC_ERROR;
+    }
+
     devices[new_id].id = new_id;
     devices[new_id].pid = pid;
     devices[new_id].type = type;
