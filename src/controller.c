@@ -202,7 +202,7 @@ int controller_shell(){
             case SHELL_LIST: {
                 int result = list_devices();
                 if (result != SUCCESS) {
-                    printf("Error: %s\n", error_to_string(result));
+                    printf("Error: %s\n\n", error_to_string(result));
                 }
                 break;
             }
@@ -211,15 +211,15 @@ int controller_shell(){
                 sscanf(line, "add %s", type_str);
                 DeviceType type = parse_type(type_str);
                 if (type == -1){
-                    printf("Invalid device type\n");
+                    printf("Invalid device type\n\n");
                     break;
                 }
 
                 int new_id = add_device(type, -1);
                 if (new_id < 0){
-                    printf("Error: %s\n", error_to_string(new_id));
+                    printf("Error: %s\n\n", error_to_string(new_id));
                 } else {
-                    printf("Device created with ID: %d\n", new_id);
+                    printf("Device created with ID: %d\n\n", new_id);
                 }
                 break;
             }
@@ -228,9 +228,9 @@ int controller_shell(){
                 sscanf(line, "del %d", &id);
                 int result = delete_device(id);
                 if (result != SUCCESS) {
-                    printf("Error: %s\n", error_to_string(result));
+                    printf("Error: %s\n\n", error_to_string(result));
                 } else {
-                    printf("Device %d deleted\n", id);
+                    printf("Device %d deleted\n\n", id);
                 }
                 break;
             }
@@ -239,9 +239,9 @@ int controller_shell(){
                 sscanf(line, "link %d to %d", &id1, &id2);
                 int result = link_devices(id1, id2);
                 if (result != SUCCESS) {
-                    printf("Error: %s\n", error_to_string(result));
+                    printf("Error: %s\n\n", error_to_string(result));
                 } else {
-                    printf("Device %d linked to %d\n", id1, id2);
+                    printf("Device %d linked to %d\n\n", id1, id2);
                 }
                 break;
             }
@@ -254,12 +254,12 @@ int controller_shell(){
                 if (result != SUCCESS){
                     // device_msg contains the specific motivation given by the device
                     if (device_msg[0] != '\0'){
-                        printf("Error: %s (%s)\n", error_to_string(result), device_msg);
+                        printf("Error: %s (%s)\n\n", error_to_string(result), device_msg);
                     }else{
                         printf("Error: %s\n", error_to_string(result));
                     }
                 } else {
-                    printf("Switch updated successfully\n");
+                    printf("Switch updated successfully\n\n");
                 }
                 break;
             }
@@ -269,9 +269,9 @@ int controller_shell(){
                 sscanf(line, "info %d", &id);
                 int result = info(id, output);
                 if (result != SUCCESS){
-                    printf("Error: %s\n", error_to_string(result));
+                    printf("Error: %s\n\n", error_to_string(result));
                 } else {
-                    printf("%s", output);
+                    printf("%s\n", output);
                 }
                 break;
             }
@@ -287,7 +287,7 @@ int controller_shell(){
                 return SUCCESS;
             }
             default:
-                printf("Command not recognized\n");
+                printf("Command not recognized\n\n");
         }
         printf("> ");
         fflush(stdout);    

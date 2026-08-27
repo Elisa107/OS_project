@@ -272,7 +272,7 @@ void hub_run(int srv_fd, int id) {
     Hub h;
     hub_init(&h);
     srand((unsigned)getpid());
-    fprintf(stderr, "[hub %d] launched (pid=%d)\n\n", id, getpid());
+    fprintf(stderr, "[hub %d] launched (pid=%d)\n", id, getpid());
 
     while (1) {
         int client = accept_connection(srv_fd);

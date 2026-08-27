@@ -303,7 +303,7 @@ void timer_run(int srv_fd, int id) {
     timer_init(&t);
     t.id = id;
     srand((unsigned)getpid());
-    fprintf(stderr, "[timer %d] launched (pid=%d)\n\n", id, getpid());
+    fprintf(stderr, "[timer %d] launched (pid=%d)\n", id, getpid());
 
     while (1){
         time_t now = time(NULL);

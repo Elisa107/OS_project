@@ -119,7 +119,7 @@ void window_run(int srv_fd, int id) {
     Window w;
     window_init(&w);
     srand((unsigned)getpid());
-    fprintf(stderr, "[window %d] launched (pid=%d)\n\n", id, getpid());
+    fprintf(stderr, "[window %d] launched (pid=%d)\n", id, getpid());
 
     while (1){
         int client = accept_connection(srv_fd);

@@ -121,7 +121,7 @@ void bulb_run(int srv_fd, int id) {
     Bulb b;
     bulb_init(&b);
     srand((unsigned)getpid());
-    fprintf(stderr, "[bulb %d] launched (pid=%d)\n\n", id, getpid());
+    fprintf(stderr, "[bulb %d] launched (pid=%d)\n", id, getpid());
 
     while (1) {
         int client = accept_connection(srv_fd);

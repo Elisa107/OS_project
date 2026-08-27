@@ -136,7 +136,7 @@ void fridge_run(int srv_fd, int id) {
     Fridge f;
     fridge_init(&f);
     srand((unsigned)getpid());
-    fprintf(stderr, "[fridge %d] launched (pid=%d)\n\n", id, getpid());
+    fprintf(stderr, "[fridge %d] launched (pid=%d)\n", id, getpid());
 
     while (1) {
         fd_set rset;
