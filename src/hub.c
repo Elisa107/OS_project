@@ -141,6 +141,19 @@ static int hub_switch_child(int child_id, int value, int sender) {
     return hub_propagate_switch(child_id, payload, sender);
 }
 
+static void hub_remove_child(Hub *h, int child_id){
+    for (int i = 0; i < h->num_children; i++){
+        if (h->children[i] == child_id){
+            // shift left to fill the gap
+            for (int j = i; j < h->num_children - 1; j++){
+                h->children[j] = h->children[j + 1];
+            }
+            h->num_children--;
+            return;
+        }
+    }
+}
+
 // normalizes a child's state to a binary value
 static int state_to_bit(const char *state) {
     if (strcmp(state, "on") == 0 || strcmp(state, "open") == 0){
@@ -249,6 +262,10 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
             }else if (strcmp(label, "parent") == 0) {
                 h->parent_id = atoi(val);
                 snprintf(out->payload, sizeof out->payload, "parent=%d", h->parent_id);
+            } else if (strcmp(label, "unlink") == 0) {
+                hub_remove_child(h, atoi(val));
+                snprintf(out->payload, sizeof out->payload, "child %d removed (total %d)",
+                atoi(val), h->num_children);
             } else {
                 out->command = CMD_ERROR;
                 snprintf(out->payload, sizeof out->payload, "%s", error_to_string(INVALID_COMMAND));

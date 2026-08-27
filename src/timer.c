@@ -274,6 +274,14 @@ static void handle_message(Timer *t, const Message *in, Message *out){
                 t->child_id = atoi(val); // timer controls a single child
                 t->expected[0] = '\0';
                 snprintf(out->payload, sizeof out->payload, "child=%d", t->child_id);
+            } else if (strcmp(label, "unlink") == 0){
+                // only actually unlink if the id matches the current child
+                // (defensive: avoids wiping the child if a stale/wrong unlink arrives)
+                if (t->child_id == atoi(val)) {
+                    t->child_id = -1;
+                    t->expected[0] = '\0';
+                }
+                snprintf(out->payload, sizeof out->payload, "child=%d", t->child_id);
             } else if (strcmp(label, "parent") == 0){
                 t->parent_id = atoi(val);
                 snprintf(out->payload, sizeof out->payload, "parent=%d", t->parent_id);

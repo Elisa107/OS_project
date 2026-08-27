@@ -429,7 +429,7 @@ int list_devices() {
             close_connection(fd);
         }
 
-        printf("ID: %d, Type: %s, Role: %s, State: %s\n",
+        printf("ID: %d, Type: %s, Role: %s, State: %s\n\n",
                devices[i].id, type_to_string(devices[i].type),
                is_control_device(devices[i].type) ? "Control" : "Interaction",
                state_info);
@@ -528,7 +528,7 @@ int link_devices(int device_id, int parent_id){
         msg_child.command = CMD_LINK;
         msg_child.sender = 0;
         msg_child.receiver = device_id;
-        // Hub and Timer expect a "parent:<id>" payload, while other devices (Bulb/Window/Fridge) expect
+        // hub and timer expect a "parent: <id>" payload, while other devices (Bulb/Window/Fridge) expect
         // just the number
         if (is_control_device(devices[device_id].type)) {
             snprintf(msg_child.payload, sizeof(msg_child.payload), "parent:%d", parent_id);
@@ -550,12 +550,32 @@ int delete_device(int device_id) {
     if (device_id < 0 || device_id >= next_id || !devices[device_id].active) {
         return DEVICE_NOT_FOUND;
     }
-    // first delete all logical child
+
+    // delete all logical children
     for (i = 0; i < device_count; i++) {
         if (devices[i].active && devices[i].parent_id == device_id) {
             delete_device(devices[i].id);   // recursively deletes
         }
     }
+
+    // notify the parent device (if any) that this child no longer exists,
+    int parent_id = devices[device_id].parent_id;
+    if (parent_id != -1 && devices[parent_id].active) {
+        int fd = connect_device(devices[parent_id].socket_path);
+        if (fd != -1) {
+            Message msg;
+            msg.command = CMD_LINK;
+            msg.sender = 0;
+            msg.receiver = parent_id;
+            snprintf(msg.payload, sizeof(msg.payload), "unlink:%d", device_id);
+            send_message(fd, &msg);
+
+            Message resp;
+            receive_message(fd, &resp);
+            close_connection(fd);
+        }
+    }
+
     kill(devices[device_id].pid, SIGTERM);
     waitpid(devices[device_id].pid, NULL, 0);
     devices[device_id].active = 0;
