@@ -181,7 +181,12 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
             }
             char first[64] = {0}, st[64];
             int consistent = 1, first_bit = -1;
-            // query all children even if one is unreachable
+            int have_reference = 0; // FIX: prima si usava "first_bit == -1" come sentinella
+                                    // di "nessun riferimento ancora", ma -1 e' anche il
+                                    // valore che state_to_bit() ritorna per uno stato
+                                    // sconosciuto (es. "empty" di un Hub/Timer annidato
+                                    // senza figli propri) -> le due cose si confondevano.
+                                    // query all children even if one is unreachable
             int failed_count = 0;
             char failed_list[64] = {0};
             for (int i = 0; i < h->num_children; i++) {
@@ -193,8 +198,9 @@ static void handle_message(Hub *h, const Message *in, Message *out) {
                     continue;
                 }
                 int bit = state_to_bit(st);
-                if (first_bit == -1) { // first reachable child, reference state
+                if (!have_reference) { // first reachable child, reference state
                     first_bit = bit;
+                    have_reference = 1;
                     strncpy(first, st, sizeof first - 1);
                 } else if (bit != first_bit){ // logical comparison, not string comparison
                     consistent = 0;
